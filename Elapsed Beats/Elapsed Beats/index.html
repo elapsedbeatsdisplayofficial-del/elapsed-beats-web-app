@@ -11249,6 +11249,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
          change never restarts the cycle. Keep this query in step with the
          CSS rule that hides .ro-mobile-bpm-row. */
       const BPM_SLOT = '\u0001';
+      // Invisible tags on a page's text: the song ("ARTIST: TITLE") and the BPM
+      // status line. They are stripped before painting and only decide how a page
+      // that is too long for the row gets shortened.
+      const TRACK_MARK = '\u0002', STATUS_MARK = '\u0003';
       const bpmBelongsHere = () => portraitQuery.matches;
 
       /* Proximity sensor: while it is lit the lower display reads what it hears. */
@@ -11257,7 +11261,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           const sensor = window.ebProximitySensor;
           const m = sensor && sensor.isOn() ? sensor.vfd() : null;
           if (!m || !m.text) return '';
-          return (m.bpmPage && bpmBelongsHere()) ? m.text + SEP + BPM_SLOT : m.text;
+          const text = (sensor.phase() === 'locked' ? TRACK_MARK : '') + m.text;
+          return (m.bpmPage && bpmBelongsHere()) ? text + SEP + BPM_SLOT : text;
         } catch (_) { return ''; }
       }
 
@@ -11275,9 +11280,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           const idleBpm = activeBpmValue();
           return (bpmBelongsHere() && isFinite(idleBpm) && idleBpm > 0) ? mobileBpmMessage() : 'NO SONG PLAYING';
         }
-        const parts = [raw.toUpperCase()];
+        const parts = [TRACK_MARK + raw.toUpperCase()];
         if (bpmBelongsHere() && isFinite(activeBpmValue())) parts.push(BPM_SLOT);
-        if (hint) parts.push(hint.toUpperCase());
+        if (hint) parts.push(STATUS_MARK + hint.toUpperCase());
         return parts.join(SEP);
       }
 
@@ -11403,13 +11408,115 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
          its own punctuation first — the dash between artist and title,
          the middle dot in a status line — and only then on words. */
       const SUBSPLIT = /\s+[·•—–|-]\s+/;
+
+      /* Song page that is wider than the row: keep "ARTIST: TITLE" on one page
+         and shorten the title to something that still reads as the song.
+         The row's own width decides what is too long. Bracketed or dashed extras
+         go first ("(Remastered 2011)", "- Radio Edit"); then the title stops at the
+         last phrase break that fits ("I'M LIKE A LAWYER | WITH THE WAY..."), and
+         never on a dangling small word. */
+      const TITLE_BREAK = /^(WITH|WITHOUT|FROM|FOR|WHEN|WHERE|WHILE|BECAUSE|THAT|WHICH|WHO|WHOSE|IF|UNTIL|AFTER|BEFORE|SINCE|THAN|INTO|ONTO|UPON|ABOUT|THROUGH|FEAT\.?|FT\.?|FEATURING)$/i;
+      const WEAK_END = /^(A|AN|THE|AND|OR|NOR|OF|TO|WITH|IN|ON|AT|FOR|FROM|BY|MY|YOUR|HIS|HER|ITS|OUR|THEIR|&|-|–|—)$/i;
+      const bare = w => String(w).replace(/^[^A-Z0-9&.]+|[^A-Z0-9&.]+$/gi, '');
+      // Cut a title at the last phrase break that fits (never on a small word).
+      // whole = the cut ends a phrase, or nothing had to be cut.
+      function shortenWords(base, fits) {
+        const words = base.split(' ');
+        let n = 0;
+        while (n < words.length && fits(words.slice(0, n + 1).join(' '))) n++;
+        if (n < 1) return null;
+        let cut = n, whole = n === words.length;
+        for (let k = Math.min(n, words.length - 1); k >= 2; k--) {
+          if (TITLE_BREAK.test(bare(words[k]))) { cut = k; whole = true; break; }
+        }
+        while (cut > 1 && WEAK_END.test(bare(words[cut - 1]))) cut--;
+        const text = words.slice(0, cut).join(' ').replace(/[\s,;:–—-]+$/, '');
+        return text ? { text, whole } : null;
+      }
+      function fitTrack(seg) {
+        const at = seg.indexOf(': ');
+        if (at < 1) return null;
+        const fullArtist = seg.slice(0, at).trim();
+        const title = seg.slice(at + 2).trim();
+        const base = title.replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ').replace(/\s+[-–—]\s+.*$/, '').replace(/\s+/g, ' ').trim() || title;
+        // One page, "ARTIST: TITLE", measured as the row shows it (":" and "."
+        // share a cell with the letter before) — as long as the title keeps at
+        // least a whole phrase ("FALL OUT BOY: I'M LIKE A LAWYER").
+        let artist = fullArtist;
+        if (slots - cellLen(artist + ': ') < 8) {   // very long artist credit: lead artist only
+          artist = artist.split(/\s*(?:,|&|\/|\bX\b|\bFEAT\.?|\bFT\.?|\bFEATURING\b|\bWITH\b)\s*/i)[0].trim() || artist;
+        }
+        const fits = t => cellLen(artist + ': ' + t) <= slots;
+        if (slots - cellLen(artist + ': ') >= 4) {
+          if (fits(base)) return artist + ': ' + base;
+          const one = shortenWords(base, fits);
+          if (one && one.whole) return artist + ': ' + one.text;
+        }
+        // Otherwise the artist and the song each get a page of their own
+        // ("FALL OUT BOY:" then "I'M LIKE A LAWYER" on a phone).
+        const alone = t => cellLen(t) <= slots;
+        let song = alone(title) ? title : alone(base) ? base : null;
+        if (!song) { const two = shortenWords(base, alone); song = two ? two.text : null; }
+        if (!song) return null;
+        const who = alone(fullArtist + ':') ? fullArtist + ':' : alone(artist + ':') ? artist + ':' : null;
+        return (who ? [who] : wrapSegment(fullArtist)).concat(song);
+      }
+
+      /* BPM status wider than the row: one page grouped with the bullet, keeping
+         what is in use and the mode ("USING SAVED OVERRIDE · AVERAGE BPM") and
+         leaving out the detail between them (the BPM itself is on the readout). */
+      const STATUS_MODE = /^(AVERAGE BPM|APPROXIMATE FLUCTUATION)$/i;
+      function fitStatus(seg) {
+        const parts = seg.split(/\s+·\s+/);
+        if (parts.length < 3 || !STATUS_MODE.test(parts[parts.length - 1])) return null;
+        const short = parts[0] + ' · ' + parts[parts.length - 1];
+        return cellLen(short) <= slots ? short : null;
+      }
+
+      /* Song names over five words are abbreviated on this line even when the
+         row has room: bracketed or dashed extras go first ("SMELLS LIKE TEEN
+         SPIRIT (2011 REMASTER)" -> "SMELLS LIKE TEEN SPIRIT"), then the name
+         stops at a phrase break within its first five words ("I'M LIKE A LAWYER
+         | WITH THE WAY..."). A name that is one long phrase with no such break
+         ("EVERYBODY WANTS TO RULE THE WORLD") stays whole. The row's width still
+         decides after that. */
+      const MAX_TITLE_WORDS = 5;
+      function tidyTitle(title) {
+        if (title.split(/\s+/).filter(Boolean).length <= MAX_TITLE_WORDS) return title;
+        const base = title.replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ').replace(/\s+[-–—]\s+.*$/, '').replace(/\s+/g, ' ').trim() || title;
+        const words = base.split(' ');
+        if (words.length <= MAX_TITLE_WORDS) return base;
+        for (let k = Math.min(MAX_TITLE_WORDS, words.length - 1); k >= 2; k--) {
+          if (!TITLE_BREAK.test(bare(words[k]))) continue;
+          let cut = k;
+          while (cut > 1 && WEAK_END.test(bare(words[cut - 1]))) cut--;
+          return words.slice(0, cut).join(' ').replace(/[\s,;:–—-]+$/, '') || base;
+        }
+        return base;
+      }
+      function trackPages(seg) {
+        const at = seg.indexOf(': ');
+        if (at >= 1) seg = seg.slice(0, at + 2) + tidyTitle(seg.slice(at + 2).trim());
+        if (cellLen(seg) <= slots) return [seg];
+        const fitted = fitTrack(seg);
+        if (fitted) return [].concat(fitted);
+        const out = [];
+        for (const sub of seg.split(SUBSPLIT)) out.push(...wrapSegment(sub));
+        return out;
+      }
+
       function buildPages(msg) {
         const out = [];
         for (const part of String(msg).split(/\s*\u2020\s*/)) {
-          const seg = part.trim();
+          let seg = part.trim();
           if (!seg) continue;
           if (seg === BPM_SLOT) { out.push(seg); continue; }  // resolved when painted
+          const kind = seg[0] === TRACK_MARK ? 'track' : seg[0] === STATUS_MARK ? 'status' : '';
+          if (kind) { seg = seg.slice(1).trim(); if (!seg) continue; }
+          if (kind === 'track') { out.push(...trackPages(seg)); continue; }
           if (cellLen(seg) <= slots) { out.push(seg); continue; }
+          const fitted = kind === 'track' ? fitTrack(seg) : kind === 'status' ? fitStatus(seg) : null;
+          if (fitted) { out.push(...[].concat(fitted)); continue; }
           for (const sub of seg.split(SUBSPLIT)) out.push(...wrapSegment(sub));
         }
         return out.length ? out : [''];
@@ -22740,8 +22847,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     const statusText = status.textContent.trim() || 'Your player';
     const titleText = title.textContent.trim() || 'Load audio to begin';
     const detailText = detail.textContent.trim() || 'MP3, WAV, FLAC, M4A and more';
-    /* Native desktop/Surface hover tooltip: no permanent Your Player strip. */
-    shell.title = statusText + ' — ' + titleText + (detailText ? ' — ' + detailText : '');
+    /* No hover tooltip on the player panel (removed on request). */
+    if (shell.hasAttribute('title')) shell.removeAttribute('title');
     popupStatus.textContent = statusText;
     popupTitle.textContent = titleText;
     popupDetail.textContent = detailText;
@@ -29524,7 +29631,7 @@ html body #mainContent #songDbSection .songdb-mobile-compact-toggle .songdb-mobi
         if(sig===lastSig) return; lastSig=sig;
         song.textContent=songText; song.title=songText;
         song.classList.toggle('eb-title-link',identified);
-        artist.textContent=artistText; artist.hidden=!artistText;
+        artist.textContent=artistText; artist.title=artistText; artist.hidden=!artistText;
         tags.replaceChildren.apply(tags,list.map(function(x){ var s=document.createElement('span'); s.className='eb-hero-tag'; s.textContent=x; return s; }));
         tags.hidden=sx ? !list.length : !m.loaded;
       }
