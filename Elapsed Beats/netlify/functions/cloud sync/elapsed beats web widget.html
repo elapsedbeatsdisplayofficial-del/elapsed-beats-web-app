@@ -34725,5 +34725,85 @@ html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table tbo
   content:none !important; display:none !important;
 }
 </style>
+<style id="eb-transport-webkit-safe-v19">
+/* v19: Stop / Pause / Play draw the same on every engine.
+   Safari on iPad / iPhone / Mac (and every other WebKit browser, including
+   all iOS browsers and watchOS) mis-draws filtered elements that sit inside
+   nested backdrop-filter panels in a scrolled page: the button art lands
+   offset, clipped, or not at all while captions and LEDs stay put.
+   The fix removes every ingredient of that bug from the transport while
+   keeping the look identical:
+     - no CSS filters on the buttons or their art (shadow is a box-shadow,
+       disabled is opacity only);
+     - the media panel no longer stacks a second backdrop blur under the
+       display shell (its own background is ~95% opaque, so it never showed);
+     - the panel fade-in no longer leaves a permanent transform layer
+       (its end state is transform:none anyway).                         */
+
+.app-mode-panel.is-active { animation-fill-mode: backwards !important; }
+
+html body #mainContent #mediaControls.media-controls,
+#mediaControls.media-controls {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Three slots on a plain grid (grid gaps work on every Safari that runs the app). */
+.display-shell .media-controls .transport-panel {
+  display: grid !important;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+}
+
+.display-shell .media-controls .transport-btn,
+html body #mainContent .display-shell .media-controls .transport-btn:disabled {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  -webkit-filter: none !important;
+  filter: none !important;
+  position: relative;
+  z-index: 0;
+  display: block;
+  flex: none;
+  overflow: visible;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.display-shell .media-controls .transport-btn img,
+.display-shell .media-controls .transport-led {
+  -webkit-filter: none !important;
+  filter: none !important;
+  max-width: none !important;
+  flex: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+}
+/* Same shadow the drop-shadow filter made: 0 8px 12px at 35% black,
+   cast by the solid face of each piece of art (measured from the PNGs). */
+.display-shell .media-controls .transport-btn::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 10%; right: 10.5%; bottom: 7.5%; left: 8.5%;
+  border-radius: 12%;
+  box-shadow: 0 8px 12px rgba(0,0,0,.35);
+  pointer-events: none;
+}
+.display-shell .media-controls #pauseBtn::before { top: 9.5%; right: 12.8%; bottom: 8.1%; left: 7%; }
+.display-shell .media-controls #playBtn::before  { top: 6.6%; right: 9.7%;  bottom: 11.2%; left: 8.4%; }
+
+/* Watch layout: dim disabled buttons with an overlay instead of a filter. */
+#ebWatch .ebw-tbtn[disabled] { -webkit-filter: none !important; filter: none !important; }
+#ebWatch .ebw-tbtn[disabled]::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  border-radius: inherit;
+  background: rgba(0,0,0,.45);
+  pointer-events: none;
+}
+</style>
 </body>
 </html>
