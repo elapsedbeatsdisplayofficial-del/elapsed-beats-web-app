@@ -34805,5 +34805,72 @@ html body #mainContent .display-shell .media-controls .transport-btn:disabled {
   pointer-events: none;
 }
 </style>
+<style id="eb-fixed-sidebar-v20">
+/* v20: the left panel (logo, Listen/Analyze, Database, Profile, Upload Music)
+   is position:fixed wherever it is shown as a side panel. It used to be
+   position:sticky inside <body>, which is the page's scroller. Safari on
+   iPad / iPhone / Mac jitters and rubber-bands sticky elements in a scrolled
+   body, and Chromium rounds them by half a pixel, so the panel visibly
+   shifted while scrolling. Fixed is pinned to the screen, so it cannot move.
+   Its size and left edge come from the page grid (column 1 keeps its width,
+   all content is placed in column 2), measured by eb-fixed-sidebar-v20-js;
+   the values below are only the first-paint fallback.
+   The visualizer canvas behind the panel bleeds 28px past its edges, which
+   made the panel internally scrollable by 28px: any nudge pushed the logo
+   up into the top edge. overflow:clip makes that impossible.            */
+@media (min-width:981px), (min-width:901px) and (min-height:511px), (min-width:901px) and (orientation:portrait) {
+  html body #mainContent.wrap > .app-header {
+    position: fixed !important;
+    top: 16px !important;
+    bottom: 16px !important;
+    left: var(--eb-side-left, max(clamp(14px,1.6vw,28px), calc((100vw - 1920px) / 2 + clamp(14px,1.6vw,28px))));
+    right: auto !important;
+    width: var(--eb-side-w, clamp(190px,17.5vw,244px)) !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    overflow: clip !important;
+    overscroll-behavior: contain;
+  }
+}
+@media (max-width:1199px) and (min-width:901px) {
+  html body #mainContent.wrap > .app-header { width: var(--eb-side-w, 190px) !important; }
+}
+</style>
+<script id="eb-fixed-sidebar-v20-js">
+(function () {
+  'use strict';
+  var root = document.documentElement;
+  function wrapEl() { return document.getElementById('mainContent'); }
+  function header() { var w = wrapEl(); return w && w.querySelector(':scope > .app-header'); }
+  var raf = 0;
+  function sync() {
+    raf = 0;
+    var w = wrapEl(); if (!w) return;
+    var cs = getComputedStyle(w);
+    if (cs.display !== 'grid') { root.style.removeProperty('--eb-side-left'); root.style.removeProperty('--eb-side-w'); return; }
+    var col = parseFloat(String(cs.gridTemplateColumns).split(' ')[0]);
+    var r = w.getBoundingClientRect();
+    var left = r.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+    if (col > 0) root.style.setProperty('--eb-side-w', col + 'px');
+    root.style.setProperty('--eb-side-left', left + 'px');
+    var h = header(); if (h && (h.scrollTop || h.scrollLeft)) { h.scrollTop = 0; h.scrollLeft = 0; }
+  }
+  function queue() { if (!raf) raf = requestAnimationFrame(sync); }
+  sync();
+  window.addEventListener('resize', queue);
+  window.addEventListener('orientationchange', queue);
+  window.addEventListener('load', queue);
+  document.addEventListener('DOMContentLoaded', queue);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(queue);
+  try { new ResizeObserver(queue).observe(wrapEl()); } catch (_) {}
+  /* Browsers without overflow:clip (Safari before 16) can still scroll the
+     panel internally; keep it at the top so the logo is never cut off. */
+  var h0 = header();
+  if (h0) h0.addEventListener('scroll', function () { if (h0.scrollTop || h0.scrollLeft) { h0.scrollTop = 0; h0.scrollLeft = 0; } }, { passive: true });
+})();
+</script>
 </body>
 </html>
