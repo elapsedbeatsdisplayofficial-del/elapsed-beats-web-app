@@ -6818,6 +6818,23 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const cached = cache[smartIdentityCacheKey(file, ctx.album)];
       if (cached && applyResolvedTrackIdentity(cached, file, token, true)) return true;
 
+      // A filename (or partial tags) that exactly names a song already in the
+      // Song Database is that song: no online confirmation needed.
+      try {
+        const api = window.elapsedBeatsSongDbApi;
+        if (api && typeof api.findIdentity === 'function') {
+          const pairs = [
+            [ctx.taggedArtist, ctx.taggedTitle],
+            [ctx.filenameArtist, ctx.filenameTitle],
+            [ctx.taggedArtist || ctx.filenameArtist, ctx.taggedTitle || ctx.filenameTitle]
+          ];
+          for (const [a, t] of pairs) {
+            const local = a && t ? api.findIdentity(a, t) : null;
+            if (local) return applyResolvedTrackIdentity({ artist: local.artist, title: local.title, provider: 'Song Database' }, file, token, false);
+          }
+        }
+      } catch (err) { console.warn('[Identity] Database match failed:', err); }
+
       trackInfoEl.textContent = 'Identifying track…';
       trackInfoEl.classList.add('no-track');
       const hit = await smartSearchOnlineIdentity(ctx);
@@ -7720,6 +7737,99 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       return v.length ? Math.max.apply(null, v) : NaN;
     }
 
+    /* ── v23 drum-role cues for the octave decision ────────────────────
+       What a listener uses that plain periodicity misses:
+       1. Backbeat. In most pop, dance, R&B, rock and ballad grooves the
+          snare lands halfway between downbeat kicks (beats 2 and 4). Kicks
+          are the strongest low-band hits; snares the strongest hits present
+          in BOTH the mid band (body) and the high band (rattle) at once —
+          hats are high only, piano and chords mostly mid only (and a snare's
+          low end is not counted as a kick). Folding a
+          two-beat cycle of the candidate tempo: at the true tempo the snares
+          pile up opposite the strongest kick; at double the tempo they sit
+          on the kick's phase; at half the tempo they fall at the quarter
+          points. So a positive score marks the right level: a slow ballad is
+          not doubled and a fast kick/snare song is not halved. A half-time
+          groove (snare on 3) gets a smaller bonus at its slower, felt
+          level: the snare sits opposite the kick across FOUR beats. It is
+          weaker than the backbeat bonus, so a normal 2-and-4 groove is
+          never pulled down by it.
+       2. "Too slow" needs drums. The existing check that full-strength beats
+          fall between a candidate's beats now also needs the kicks/snares to
+          land there: steady 8th-note hats or piano alone no longer push a
+          ballad up to double speed.
+       3. Drumless songs. With no cymbals or snare rattle the beat is only
+          in the accents, so a faster reading needs its off-beats to be
+          nearly as strong as its on-beats (a strummed ballad stays slow).
+       4. Bar consistency. Kicks repeat with kicks and snares with snares
+          every bar or half bar. A real beat divides that into 2, 3, 4, 6 or
+          8 beats; a 4:3 or 3:2 artefact from a repeating arpeggio does not.
+       These cues only score the audio; a stored or known BPM is untouched. */
+    function smartStrongest(env, q) {
+      const pos = []; for (let i = 0; i < env.length; i++) if (env[i] > 0) pos.push(env[i]);
+      const thr = pos.length ? quantile(pos, q) : 0, out = new Float32Array(env.length);
+      for (let i = 0; i < env.length; i++) out[i] = Math.max(0, env[i] - thr);
+      return out;
+    }
+    function smartDrumRoles(O) {
+      const low = O.bands[0], mid = O.bands[1], high = O.bands[2], n = mid.length;
+      const sn = new Float32Array(n), kk = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        sn[i] = Math.min(Math.max(0, mid[i]), Math.max(0, high[i]));      // body AND rattle → snare/clap
+        kk[i] = Math.max(0, low[i] - 0.75 * Math.max(0, high[i]));         // low thump without rattle → kick
+      }
+      const K = smartStrongest(kk, 0.80), S = smartStrongest(sn, 0.85), D = new Float32Array(n);
+      for (let i = 0; i < n; i++) D[i] = K[i] + S[i];
+      return { K, S, D };
+    }
+    function smartFold(env, s, e, C, B) {
+      const H = new Float64Array(B);
+      for (let i = s; i < e; i++) { const v = env[i]; if (v > 0) H[Math.floor((((i - s) % C) / C) * B) % B] += v; }
+      return H;
+    }
+    function smartBackbeat(K, S, P, segs, minCycles = 4) {
+      const C = 2 * P, B = 8, out = [];
+      const near = (h, c) => h[(c + B - 1) % B] + h[c] + h[(c + 1) % B];
+      for (const [s, e] of segs) {
+        if (e - s < C * minCycles) continue;
+        const hk = smartFold(K, s, e, C, B), hs = smartFold(S, s, e, C, B);
+        let tot = 0; for (let c = 0; c < B; c++) tot += hs[c];
+        if (!(tot > 1e-9)) continue;
+        let kp = 0, kv = -1;
+        for (let c = 0; c < B; c++) { const v = near(hk, c); if (v > kv) { kv = v; kp = c; } }
+        if (!(kv > 1e-9)) continue;
+        out.push((near(hs, (kp + B / 2) % B) - near(hs, kp)) / tot);
+      }
+      return out.length >= 2 ? median(out) : NaN;
+    }
+    function smartDrumAutocorr(K, S, rate, segs) {
+      const hi = Math.round(rate * 7), acs = [];
+      for (const [s, e] of segs) {
+        if (e - s <= hi + 64) continue;
+        const a = smartAutocorr(K, s, e, hi), b = smartAutocorr(S, s, e, hi);
+        if (a && b) { const m = new Float64Array(hi + 1); for (let i = 1; i <= hi; i++) m[i] = 0.5 * ((a[i] || 0) + (b[i] || 0)); acs.push(m); }
+        else if (a || b) acs.push(a || b);
+      }
+      if (!acs.length) return null;
+      const ac = new Float64Array(hi + 1);
+      for (let lag = 1; lag <= hi; lag++) { let t = 0; for (const a of acs) t += a[lag] || 0; ac[lag] = t / acs.length; }
+      let longMax = 0;
+      for (let lag = Math.round(rate * 1.0); lag <= hi; lag++) longMax = Math.max(longMax, ac[lag]);
+      return longMax > 0.08 ? { ac, longMax, hi } : null;
+    }
+    function smartBarFit(DA, P) {
+      if (!DA || !(P > 0)) return NaN;
+      let best = 0, tried = 0;
+      for (const k of [2, 3, 4, 6, 8]) {
+        const lag = k * P; if (lag > DA.hi - 2) continue;
+        tried++;
+        const lo = Math.max(1, Math.floor(lag * 0.975)), up = Math.min(DA.hi, Math.ceil(lag * 1.025));
+        for (let i = lo; i <= up; i++) best = Math.max(best, DA.ac[i]);
+      }
+      return tried ? clamp(best / DA.longMax, 0, 1) : NaN;
+    }
+    const SMART_W_BB = 1.6, SMART_W_BAR = 1.2, SMART_W_HT = 0.8;
+
     // Tunables for the octave decision (see the notes above).
     const SMART_PRIOR_CENTER = 115, SMART_PRIOR_FLAT = 0.35, SMART_PRIOR_SIGMA = 0.5;   // flat ≈ 90–147 BPM
     const SMART_W_EVID = 1.6, SMART_W_ACC = 4.0, SMART_W_SUB = 5.0, SMART_W_IOI = 1.5;
@@ -7773,6 +7883,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       peaks.forEach((lag) => { const b = 60 * rate / lag; addCand(b); addCand(b * 2); addCand(b / 2); });
 
       const ioi = smartStrongIOI(O.lin, rate);
+      // No cymbals or snare rattle (strummed / piano songs): the beat is
+      // carried by accents alone, so off-beat notes must be clearly as strong
+      // as on-beat ones before a faster reading is accepted.
+      const drumless = O.bandStrengths && O.bandStrengths[1] > 0 && (O.bandStrengths[2] / O.bandStrengths[1]) < 0.35;
+      const accFloor = drumless ? 0.85 : 0.7;
+      const DR = smartDrumRoles(O);
+      const DA = smartDrumAutocorr(DR.K, DR.S, rate, segs);
       // One candidate's octave evidence (accent, half-beat, felt speed).
       // `forced` candidates come from a known BPM and are always scored.
       const scoreBpm = (bpm, forced) => {
@@ -7781,15 +7898,27 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         const evid = pk.v / bestV;
         if (evid < 0.12 && !forced) return null;
         const acc = smartCarried(O, P, segs);                    // odd vs even beats
-        const sub = smartCarried(O, P / 2, segs);                // half-beat vs beat
+        let sub = smartCarried(O, P / 2, segs);                  // half-beat vs beat
+        const subDrums = smartAlternation(DR.D, rate, P / 2, segs);   // …and the drums agree
+        if (isFinite(subDrums) && isFinite(sub)) sub = Math.min(sub, subDrums);
           // broad perceptual prior: flat over ~86–141 BPM, log-Gaussian beyond
         const oct = Math.max(0, Math.abs(Math.log2(bpm / SMART_PRIOR_CENTER)) - SMART_PRIOR_FLAT) / SMART_PRIOR_SIGMA;
-        let score = SMART_W_EVID * Math.log(Math.min(1.2, Math.max(0.02, evid))) - 0.5 * oct * oct;
-        if (isFinite(acc)) score -= SMART_W_ACC * Math.max(0, 0.7 - acc);       // its "beats" are subdivisions → too fast
+        // A clear 2-and-4 backbeat at this tempo outweighs the general tempo-range
+        // preference: genuinely slow ballads and fast songs keep their level.
+        const bb = smartBackbeat(DR.K, DR.S, pk.lag, segs);       // snare opposite the downbeat kick
+        let rangePenalty = 0.5 * oct * oct;
+        if (isFinite(bb) && bb > 0.25) rangePenalty = Math.min(rangePenalty, 0.25);
+        let score = SMART_W_EVID * Math.log(Math.min(1.2, Math.max(0.02, evid))) - rangePenalty;
+        if (isFinite(acc)) score -= SMART_W_ACC * Math.max(0, accFloor - acc);       // its "beats" are subdivisions → too fast
         if (isFinite(sub) && bpm * 2 <= 215) score -= SMART_W_SUB * Math.max(0, sub - 0.6); // full beats between beats → too slow
         // never beat faster than the song's strong events actually move
         if (isFinite(ioi)) { const r = (60 / bpm) / ioi; if (r < 0.8) score -= SMART_W_IOI * Math.log2(0.8 / r); }
-        return { bpm, P: pk.lag, evid, acc, sub, score };
+        if (isFinite(bb) && bb > 0) score += SMART_W_BB * bb;
+        const ht = smartBackbeat(DR.K, DR.S, 2 * pk.lag, segs, 3);   // half-time: snare on 3, felt at this level
+        if (isFinite(ht) && ht > 0) score += SMART_W_HT * ht;
+        const barFit = smartBarFit(DA, pk.lag);                  // kicks/snares repeat every 2–8 beats
+        if (isFinite(barFit)) score -= SMART_W_BAR * Math.max(0, 0.7 - barFit) / 0.7;
+        return { bpm, P: pk.lag, evid, acc, sub, bb, ht, barFit, score };
       };
       // precision: the peaks at 2, 4, 8 beats pin the period down further
       const refineBpm = (win) => {
@@ -15586,8 +15715,32 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       ...SEED_REMIXES.map(row => ({ title: row[0], artist: row[1], remixer: row[2] || '', kind: 'remix' }))
     ];
 
+    /* v23: Audition Online's own songs (artist "Audition"), as archived from
+       the game. BPMs come from the official Audition PH/SEA BPM lists
+       (PlayPark), the 2009 osu! Audition project list, StrategyWiki and the
+       AuditionSEA fan song list; each row's note says which. Songs with no
+       published BPM show a dash and can be filled in by anyone with the BPM
+       editor (double-click / long-press), which syncs to every device. Time
+       and Ë are unknown until the song is loaded, so they show dashes too;
+       these rows never go to the internet metric/duration lookups, whose
+       matches for a generic name like "Audition" cannot be trusted. */
+    const AUDITION_SONGS = [["1,2 Fiesta", 136, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["3254 Techno Party", 142, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["AEIAOE", 130, "Audition PH/SEA official BPM list (PlayPark)"], ["Again", 130, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Apology", 140, "osu! Audition project list (2009) · Audition PH/SEA official BPM list (PlayPark) as “Sorry”"], ["As Time Goes By", 130, "Audition PH/SEA official BPM list (PlayPark) as “Even After Time Passes” · AuditionSEA fan song list (2012) as “Time after time”"], ["At The Same Time", 144, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["Audition", 168, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["B Soul Funk", 104, "osu! Audition project list (2009) · StrategyWiki"], ["Baby, Baby, Baby", 128, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Be the Wind", 130, "Audition PH/SEA official BPM list (PlayPark) (a fan list says 138)"], ["Beat City", 120, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Beautiful 2009", 128, "Audition PH/SEA official BPM list (PlayPark)"], ["Beautiful", 122, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Beforehand", null, "No published BPM found (a fan list has “As Early As Possible” at 106; unconfirmed)"], ["Blackout House", 130, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Bye Bye", 132, "Audition PH/SEA official BPM list (PlayPark)"], ["Can Can", 150, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) (one fan list says 138)"], ["Canon 2007", 105, "osu! Audition project list (2009) · Audition PH/SEA official BPM list (PlayPark) · Hard mode 210"], ["Canon Groove", 105, "osu! Audition project list (2009) · StrategyWiki · Audition PH/SEA official BPM list (PlayPark)"], ["Can't Let You Go", 145, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Catch", 120, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["Cheer Up!!", null, "No published BPM found"], ["Chinese Lady", 118, "osu! Audition project list (2009)"], ["Christmas Party", 130, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Come On!", 150, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Cuckoo Clock", 134, "Audition PH/SEA official BPM list (PlayPark) (a fan list says 128)"], ["Cutie", null, "No published BPM found"], ["Dance Dance", 132, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Dance Fish", 130, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Dance Flower", 130, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Dance With Me", 117, "Audition PH/SEA official BPM list (PlayPark)"], ["Dancing Queen", 140, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["December (VOX TUNE)", 100, "AuditionSEA fan song list (2012)"], ["Dentist", 125, "Audition PH/SEA official BPM list (PlayPark)"], ["Destiny", 132, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Diary", 98, "AuditionSEA fan song list (2012)"], ["Diet", 128, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Digital Soul", 102, "osu! Audition project list (2009) · StrategyWiki"], ["Disco World", 124, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Discreet", 120, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["DJ Euro Mix", 140, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Don't Cry, My Heart", 140, "Audition PH/SEA official BPM list (PlayPark)"], ["Don't Fool Around", 138, "Audition PH/SEA official BPM list (PlayPark) as “Don't Mess Around” · AuditionSEA fan song list (2012) as “Don't Play Around”"], ["Don't Need To Say A Thing", null, "No published BPM found"], ["Don't Worry At All", 108, "Audition PH/SEA official BPM list (PlayPark) as “Don't Worry” · AuditionSEA fan song list (2012)"], ["Doo Doop (No Intro)", 140, "Audition PH/SEA official BPM list (PlayPark) (same song as Doo Doop) · osu! Audition project list (2009)"], ["Doo Doop", 140, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Drama", 128, "Audition PH/SEA official BPM list (PlayPark)"], ["Dream Machine", 125, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Driving At Night", 140, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Elec Bossa", 123, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Euro 2005", 138, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Everyday", 175, "Audition PH/SEA official BPM list (PlayPark)"], ["Eye for an Eye", 96, "Audition PH/SEA official BPM list (PlayPark) as “Eyes on Eyes” · Audition fan forum list as “Eye by eye”"], ["Feels Good (2009 Mini-Album)", 124, "Audition PH/SEA official BPM list (PlayPark) as “Good (2009 Mini Album)”"], ["Fly High", 81, "Audition PH/SEA official BPM list (PlayPark) lists Fly High (Hard) at 162; the normal song is half that"], ["Funky Town", 130, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Get Down", 100, "osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["Get on the Floor", 140, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Girl", 109, "AuditionSEA fan song list (2012)"], ["Gloomy March", 92, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Go Go", 150, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Good", 145, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Goodbye, Good Day", null, "No published BPM found"], ["Goodbye", null, "No published BPM found"], ["Hands Up!!!", 135, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Happy Ending", 128, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["Have a Nice Day", 120, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Heavy Metal Syndrome", 145, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Holiday", 110, "Audition PH/SEA official BPM list (PlayPark)"], ["How to Say", 130, "Audition PH/SEA official BPM list (PlayPark)"], ["I Cannot Abandon It", 84, "osu! Audition project list (2009)"], ["I did not know", 120, "Audition PH/SEA official BPM list (PlayPark) as “I Don't Know” · AuditionSEA fan song list (2012)"], ["I KNOW", 95, "Audition PH/SEA official BPM list (PlayPark)"], ["I Will Be Very Good To You", 140, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["I'll Come To See You", null, "No confirmed BPM (similar titles are listed at 125, 130 and 140)"], ["I'll Pretend I Don't Know", null, "No confirmed BPM (“Pretend Ignorance” is listed at 148, “Pretend not to get it” at 134)"], ["In The Groove", 130, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["It's Alright", 120, "osu! Audition project list (2009)"], ["Just One", 126, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["K.O.", 120, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Keep Remember", 120, "Audition PH/SEA official BPM list (PlayPark) as “Always Remember” · AuditionSEA fan song list (2012)"], ["Kiss Kiss", 125, "Audition PH/SEA official BPM list (PlayPark)"], ["Leaving", 100, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Left Right", 128, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Let's Start It", 99, "osu! Audition project list (2009)"], ["Lie", 100, "osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["Like a Loser", 150, "osu! Audition project list (2009) · Audition PH/SEA official BPM list (PlayPark) as “Like A Fool”"], ["Like U", 104, "osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["Listen", 98, "osu! Audition project list (2009) · Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Little by Little", 125, "Audition PH/SEA official BPM list (PlayPark) as “Little”"], ["Lookie, Lookie", null, "No published BPM found"], ["Love Doctor", 124, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Love Love Mode", 130, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Love Mode", 190, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["Love Song", null, "No confirmed BPM (fan lists show two different “Love Song” entries, 123 and 140)"], ["Magic World", 185, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Mov Mov", 107, "osu! Audition project list (2009)"], ["Move", 140, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Mr. Detective", 128, "Audition PH/SEA official BPM list (PlayPark) as “Detective”"], ["Mr. No. 1 Guide", 128, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["My Heart Is Beating", null, "No published BPM found"], ["New York", 96, "osu! Audition project list (2009)"], ["Night", 128, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["No Space", 138, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Oh My Girl", 126, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["One Step", 100, "osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["Party Party", 130, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Party Summer Night", 96, "Audition PH/SEA official BPM list (PlayPark) · Audition fan forum list"], ["Pit-A-Pat", 124, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Play Boy", 120, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Tell Me Why", 122, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Thank You", 130, "Audition PH/SEA official BPM list (PlayPark)"], ["Timing (2009 Mini-Album)", 132, "Audition PH/SEA official BPM list (PlayPark)"], ["Timing", 132, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["To You (2009 Mini-Album)", 138, "Audition PH/SEA official BPM list (PlayPark)"], ["To You", 138, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Together Forever", 115, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Train Rolling Through The Sea When It Rains", 82, "Audition PH/SEA official BPM list (PlayPark) as “Train Running on The Sea When It Rains” · Hard mode 164"], ["U Know", 90, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009)"], ["Under the Sun", 128, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Ur My Angel", 130, "Audition PH/SEA official BPM list (PlayPark) as “Ur Ma Angel”"], ["What Do You Want Me To Do", 106, "Audition PH/SEA official BPM list (PlayPark) as “What To Do” · AuditionSEA fan song list (2012)"], ["What Else Do You Want", 128, "osu! Audition project list (2009) · Audition PH/SEA official BPM list (PlayPark) as “What More Do You Need”"], ["Who Who", 108.84, "osu! Audition project list (2009) · AuditionSEA fan song list (2012) (109)"], ["With You", 150, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · AuditionSEA fan song list (2012)"], ["X Girlfriend", 128, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Yay Yay Ya", null, "No confirmed BPM (fan lists show “ya ya ya” at 112 and “Ya Yi Ya Yi Ya Yi” at 134)"], ["Yeah Yo", 101, "Audition PH/SEA official BPM list (PlayPark) · AuditionSEA fan song list (2012)"], ["Yes, if it's you", 130, "Audition PH/SEA official BPM list (PlayPark) as “If It's You”"], ["Yo! DJ!", 135, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["You Are Here No More", null, "No published BPM found"], ["You Don't Know", 110, "AuditionSEA fan song list (2012)"], ["You", 136, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"], ["Young", null, "No confirmed BPM (“Still Young” is listed at 176)"], ["You're Already Gone", 150, "Audition PH/SEA official BPM list (PlayPark) · osu! Audition project list (2009) · StrategyWiki"]];
+    let auditionKeySet = null;
+    function auditionKeys() {
+      if (!auditionKeySet) auditionKeySet = new Set(AUDITION_SONGS.map(([t]) => rowKey({ t, a: 'Audition', r: '' })));
+      return auditionKeySet;
+    }
+    function auditionSeedRows() {
+      return AUDITION_SONGS.map(([t, b, note]) => ({
+        t, a: 'Audition', r: '', b: validDbBpm(b) ? Number(b) : NaN, d: NaN,
+        kind: 'original', src: 'ref', provider: 'Audition song lists',
+        refNote: note, noOnlineMetrics: true
+      }));
+    }
+
     function seedRows() {
       const rows = [];
+      auditionSeedRows().forEach(row => rows.push(row));
       SEED_ORIGINALS.forEach(([t, a, b, d]) => {
         rows.push(ensureCompleteMetrics({ t, a, r: '', b, d, kind: 'original', src: 'ref' }, 'reference estimate'));
       });
@@ -16719,7 +16872,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
     async function hydrateSeedReferenceMetrics() {
       if (seedMetricHydrationBusy || !navigator.onLine) return;
-      const pending = catalogue.filter(row => row && row.src === 'ref' && (row.metricEstimate || !validDbBpm(row.b) || !validDbDuration(row.d)));
+      const pending = catalogue.filter(row => row && row.src === 'ref' && !row.noOnlineMetrics && (row.metricEstimate || !validDbBpm(row.b) || !validDbDuration(row.d)));
       if (!pending.length) return;
       seedMetricHydrationBusy = true;
       const cache = readSeedMetricCache();
@@ -16998,7 +17151,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       // are all computable.
       catalogue.forEach(rawRow => {
         const row = canonicalizeRow(rawRow);
-        if (databaseIdentityLooksResolved(row) && rowHasCompleteMetrics(row)) byKey.set(rowKey(row), row);
+        if (!databaseIdentityLooksResolved(row)) return;
+        if (rowHasCompleteMetrics(row) || auditionKeys().has(rowKey(row))) byKey.set(rowKey(row), row);
       });
       return Array.from(byKey.values());
     }
@@ -17208,6 +17362,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         const provider = escapeHtml(row.provider || 'public catalogue');
         if (row.metricEstimate) return `<span class="songdb-badge is-online" title="Online identity · provisional BPM/time until verified">Online*</span>`;
         return `<span class="songdb-badge is-online" title="Online result · ${provider}">Online</span>`;
+      }
+      if (row.src === 'ref' && row.refNote) {
+        const needs = !validDbBpm(row.b);
+        const tip = needs
+          ? `${row.refNote}. Double-click (mouse) or long-press (touch) the dash to add the BPM for everyone.`
+          : `Reference BPM from ${row.refNote}. Time and Ë fill in once the song is loaded.`;
+        return `<span class="songdb-badge${needs ? ' is-needs-bpm' : ''}" title="${escapeHtml(tip)}">${needs ? 'Needs BPM' : 'Reference'}</span>`;
       }
       if (row.metricEstimate) return '<span class="songdb-badge" title="Built-in reference identity · provisional BPM/time until verified or learned">Reference*</span>';
       return '<span class="songdb-badge">Reference</span>';
@@ -17447,6 +17608,25 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           raw:JSON.parse(JSON.stringify(shown))
         };
       }),
+      // v24: exact name match against the Database (reference, learned or
+      // saved rows). Lets an untagged "Audition - Cutie.mp3" be recognised
+      // without an online catalogue that has never heard of the song.
+      findIdentity: (artist, title) => {
+        const a = cleanDbText(artist || ''), t = cleanDbText(title || '');
+        if (!a || !t) return null;
+        const parts = splitRemix(t);
+        const probes = [{ t, a, r: '' }];
+        if (parts.remixer) probes.push({ t: parts.title, a, r: parts.remixer });
+        for (const probe of probes) {
+          const key = rowKey(probe);
+          const row = catalogueRowForKey(key);
+          if (row && databaseIdentityLooksResolved(row)) {
+            const title = row.r ? `${row.t} (${row.r} Remix)` : row.t;
+            return { artist: row.a, title, key };
+          }
+        }
+        return null;
+      },
       getRowByKey: (key) => {
         const row=catalogueRowForKey(key); if(!row)return null;
         const shown=effectiveRow(row,key), beats=beatsFor(shown);
@@ -18982,6 +19162,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
     function needsOnlineDuration(row) {
       if (!row || row.src !== 'learned') return false;
+      if (row.noOnlineMetrics || auditionKeys().has(rowKey(row))) return false;
       const missing = !isFinite(Number(row.d)) || Number(row.d) <= 0;
       const fallback = row.ds === 'upload-fallback';
       return missing || fallback;
@@ -19185,7 +19366,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       autoFiledLoadMark = mark;
       if (readStore()[key]) return false;
       const canonicalKey = rowKey(canonicalizeRow(rec));
-      if (allCatalogueRows().some(row => rowKey(row) === canonicalKey)) return false;
+      const visibleRow = allCatalogueRows().find(row => rowKey(row) === canonicalKey);
+      // A reference row still missing its BPM or Time (the Audition catalogue)
+      // is completed by the measured upload; a complete row is never touched.
+      if (visibleRow && rowHasCompleteMetrics(visibleRow)) return false;
       const ok = upsertLoadedTrack(true);
       if (ok) setStatus(`${rec.a}: ${rec.t} added to the Song Database — ${rec.b.toFixed(2)} BPM measured from your upload.`);
       return ok;
@@ -19202,7 +19386,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       let done = {};
       try { done = JSON.parse(localStorage.getItem(PROFILE_DB_BACKFILL_KEY) || '{}') || {}; } catch (_) { done = {}; }
       const store = readStore();
-      const visible = new Set(allCatalogueRows().map(row => rowKey(row)));
+      const visible = new Set(allCatalogueRows().filter(row => rowHasCompleteMetrics(row)).map(row => rowKey(row)));
       let added = 0, marked = 0;
       Object.keys(analysis).forEach(id => {
         const a = analysis[id];
@@ -35320,5 +35504,13 @@ html body #songDbSection .songdb-bpm-editor {
   };
 })();
 </script>
+<style id="eb-songdb-needs-bpm-v23">
+/* v23: rows waiting for a community BPM. */
+html body #songDbSection .songdb-badge.is-needs-bpm {
+  color: #F9423A !important;
+  border-color: rgba(249,66,58,.45) !important;
+  background: rgba(249,66,58,.08) !important;
+}
+</style>
 </body>
 </html>
