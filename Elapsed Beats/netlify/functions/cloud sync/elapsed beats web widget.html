@@ -6832,6 +6832,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
             const local = a && t ? api.findIdentity(a, t) : null;
             if (local) return applyResolvedTrackIdentity({ artist: local.artist, title: local.title, provider: 'Song Database' }, file, token, false);
           }
+          // v26: then the same names with a letter or two misspelled.
+          if (typeof api.findNearSpelling === 'function') {
+            for (const [a, t] of pairs) {
+              const near = a && t ? api.findNearSpelling(a, t) : null;
+              if (near) return applyResolvedTrackIdentity({ artist: near.artist, title: near.title, provider: 'Song Database' }, file, token, false);
+            }
+          }
         }
       } catch (err) { console.warn('[Identity] Database match failed:', err); }
 
@@ -6885,6 +6892,12 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       if (tagsLookHuman) {
         currentArtist = taggedArtist.trim();
         currentTitle = cleanTaggedTitle.trim();
+        // v26: tags one or two letters off a Database song take its spelling.
+        try {
+          const dbApi = window.elapsedBeatsSongDbApi;
+          const near = dbApi && typeof dbApi.findNearSpelling === 'function' ? dbApi.findNearSpelling(currentArtist, currentTitle) : null;
+          if (near) { currentArtist = near.artist; currentTitle = near.title; }
+        } catch (_) {}
         currentIdentityVerified = true;
         currentIdentitySource = 'embedded-tags';
         trackInfoEl.textContent = `${currentArtist}: ${currentTitle}`;
@@ -17580,6 +17593,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     if (metricFluxEl) metricFluxEl.addEventListener('click', () => selectMetric('flux'));
 
     function refresh() {
+      mergeMisspelledUploads();
       catalogue = buildCatalogue();
       const validKeys = new Set(allCatalogueRows().map(row => rowKey(row)));
       Array.from(selectedRowKeys).forEach(key => { if (!validKeys.has(key)) selectedRowKeys.delete(key); });
@@ -17590,6 +17604,140 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       render();
     }
     window.refreshSongDatabase = refresh;
+
+    /* v26: spelling-tolerant matching. A title one or two letters off
+       ("Christimas Party") from a song by the same artist is the same song.
+       Uploads take the Database's spelling, and an uploaded row that is a
+       misspelling of a Database row merges into it, so a typo never leaves
+       a duplicate behind. Numbers must agree ("Part 1" is not "Part 2"),
+       a plural is a different title, and the first letter must match. */
+    function spellingDistance(a, b, max) {
+      if (Math.abs(a.length - b.length) > max) return max + 1;
+      let prev2 = null, prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+      for (let i = 1; i <= a.length; i++) {
+        const cur = [i];
+        let best = i;
+        for (let j = 1; j <= b.length; j++) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+          if (prev2 && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, prev2[j - 2] + 1);
+          cur[j] = v;
+          if (v < best) best = v;
+        }
+        if (best > max) return max + 1;
+        prev2 = prev; prev = cur;
+      }
+      return prev[b.length];
+    }
+    function titlesNearlySame(x, y) {
+      const a = norm(x), b = norm(y);
+      if (!a || !b || a === b) return false;
+      const digits = s => (s.match(/\d+/g) || []).join(',');
+      if (digits(a) !== digits(b)) return false;
+      const ca = a.replace(/ /g, ''), cb = b.replace(/ /g, '');
+      if (ca === cb) return true;                      // spacing only: "Good Bye" / "Goodbye"
+      if (ca + 's' === cb || cb + 's' === ca) return false;
+      const len = Math.max(ca.length, cb.length);
+      if (len < 6 || ca[0] !== cb[0]) return false;
+      const allowed = len >= 12 ? 2 : 1;
+      return spellingDistance(ca, cb, allowed) <= allowed;
+    }
+    function sameArtistName(x, y) {
+      const a = norm(primaryArtist(x)), b = norm(primaryArtist(y));
+      return !!a && a === b;
+    }
+    var seedKeyCache = null;
+    function seedKeySet() {
+      if (!seedKeyCache) {
+        seedKeyCache = new Set();
+        try { seedRows().forEach(raw => { const k = rowKey(canonicalizeRow(raw)); if (k) seedKeyCache.add(k); }); } catch (_) {}
+      }
+      return seedKeyCache;
+    }
+    // The one Database song (same artist, still missing its BPM or Time)
+    // that this misspelled title must mean, or null.
+    function nearSpellingTarget(artist, title, remixer) {
+      const hits = allCatalogueRows().filter(row =>
+        sameArtistName(row.a, artist) && norm(row.r || '') === norm(remixer || '')
+        && !rowHasCompleteMetrics(row) && titlesNearlySame(title, row.t));
+      return hits.length === 1 ? hits[0] : null;
+    }
+
+    var spellingMergeBusy = false;
+    function mergeMisspelledUploads() {
+      if (spellingMergeBusy) return false;
+      spellingMergeBusy = true;
+      try {
+        const store = readStore();
+        const uploads = Object.keys(store).filter(k => {
+          const r = store[k];
+          return r && r.t && r.a && r.src !== 'learned' && r.deleted !== true && (r.ds === 'upload' || r.src === 'user');
+        });
+        if (!uploads.length) return false;
+        const rows = allCatalogueRows();
+        const seeds = seedKeySet();
+        const forget = [];
+        const merged = new Set();
+        let changed = false;
+        uploads.forEach(k => {
+          const s = store[k];
+          if (!s || merged.has(k)) return;
+          const sKey = rowKey(canonicalizeRow({ t: s.t, a: s.a, r: s.r || '' }));
+          if (seeds.has(sKey)) return;                 // its own spelling is a Database song
+          const sd = Number(s.d);
+          const matches = rows.filter(row => {
+            const key = rowKey(row);
+            if (key === sKey || key === k) return false;
+            if (!sameArtistName(row.a, s.a) || norm(row.r || '') !== norm(s.r || '')) return false;
+            if (!titlesNearlySame(s.t, row.t)) return false;
+            if (!rowHasCompleteMetrics(row)) return true;        // a row waiting for this data
+            const d = Number(row.d);                             // or the same recording, re-uploaded
+            return validDbDuration(d) && validDbDuration(sd) && Math.abs(d - sd) <= 1.5;
+          });
+          if (matches.length !== 1) return;
+          const t = matches[0], tKey = rowKey(t);
+          const tStored = store[tKey] || null;
+          // A row merged away earlier in this pass is no longer a target.
+          if (merged.has(tKey) || (!seeds.has(tKey) && !tStored)) return;
+          // Two uploads of yours and no Database spelling: the newer upload
+          // is the corrected one, so the older merges into it.
+          if (!seeds.has(tKey) && tStored && (Number(tStored.at) || 0) < (Number(s.at) || 0)) return;
+          if (!tStored || !rowHasCompleteMetrics(tStored)) {
+            // A Database (reference) BPM is used exactly, as for any upload of
+            // that song; a BPM you corrected by hand is kept.
+            const bpm = s.dbCorrected === true ? Number(s.b) : (validDbBpm(t.b) ? Number(t.b) : Number(s.b));
+            if (validDbBpm(bpm) && validDbDuration(sd)) {
+              const variant = normalizeStoredVariant({
+                rawTitle: t.t, label: s.variantLabel || '', b: bpm, d: sd, ds: s.ds || 'upload',
+                album: s.album || '', mixAlbum: s.mixAlbum || '', fileName: s.fileName || '', at: Number(s.at) || Date.now()
+              });
+              store[tKey] = {
+                ...(tStored || {}), ...s,
+                t: t.t, a: t.a, r: t.r || '', rawTitle: t.t, variantLabel: s.variantLabel || '',
+                b: Math.round(bpm * 100) / 100, d: Math.round(sd * 1000) / 1000,
+                variants: variant ? [variant] : [], mergedFrom: s.t, at: Date.now()
+              };
+              if (s.dbCorrected === true) queueCloudBpmCorrection(tKey, store[tKey]);
+            }
+          }
+          delete store[k];
+          if (sKey !== k) delete store[sKey];
+          merged.add(k); merged.add(sKey);
+          if (s.dbCorrected === true) forget.push([sKey, { ...s, deleted: true, at: Date.now() }]);
+          variationIndexByKey.delete(k);
+          changed = true;
+        });
+        if (!changed) return false;
+        writeStore(store);
+        forget.forEach(([key, rec]) => { try { void queueCloudBpmCorrection(key, rec); } catch (_) {} });
+        return true;
+      } catch (err) {
+        console.warn('[Song Database] Spelling merge skipped:', err);
+        return false;
+      } finally {
+        spellingMergeBusy = false;
+      }
+    }
 
     window.elapsedBeatsSongDbApi = {
       getAllRows: () => allCatalogueRows().map(row => {
@@ -17626,6 +17774,92 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           }
         }
         return null;
+      },
+      // v25: batch upload straight to the Database (eb-db-batch-upload).
+      // A title-only file name ("Cutie.mp3") names a Database song only when
+      // exactly one artist in the Database has a song with that title.
+      // v26: "Audition: Christimas Party" -> "Audition: Christmas Party" when
+      // the Database has no song by the exact name and exactly one song by
+      // that artist, still missing its BPM or Time, is one or two letters off.
+      findNearSpelling: (artist, title) => {
+        const a = cleanDbText(artist || ''), t = cleanDbText(title || '');
+        if (!a || !t) return null;
+        if (catalogueRowForKey(rowKey({ t, a, r: '' }))) return null;
+        const parts = splitRemix(t);
+        if (parts.remixer && catalogueRowForKey(rowKey({ t: parts.title, a, r: parts.remixer }))) return null;
+        const row = nearSpellingTarget(a, t, '');
+        if (!row) return null;
+        return { artist: row.a, title: row.t, key: rowKey(row) };
+      },
+      findIdentityByTitle: (title) => {
+        const nt = norm(cleanDbText(title || ''));
+        if (!nt || nt.length < 2) return null;
+        const hits = allCatalogueRows().filter(row => !row.r && norm(row.t) === nt && databaseIdentityLooksResolved(row));
+        const artists = new Set(hits.map(row => norm(row.a)));
+        if (hits.length && artists.size === 1) return { artist: hits[0].a, title: hits[0].t, key: rowKey(hits[0]) };
+        if (hits.length) return null;
+        const near = allCatalogueRows().filter(row => !row.r && !rowHasCompleteMetrics(row) && titlesNearlySame(title, row.t));
+        const nearArtists = new Set(near.map(row => norm(row.a)));
+        if (!near.length || nearArtists.size !== 1 || near.length !== 1) return null;
+        return { artist: near[0].a, title: near[0].t, key: rowKey(near[0]), spelling: true };
+      },
+      // Same rule as the player's auto-file: a row you saved, or a row that
+      // already has BPM + Time, is complete and is never overwritten.
+      batchRowState: (artist, title) => {
+        const a = cleanDbText(artist || ''), t = cleanDbText(title || '');
+        if (!a || !t) return null;
+        const parts = splitUploadedIdentity(t);
+        const rec = { t: parts.title, a, r: parts.remixer || '' };
+        const key = rowKey(rec);
+        const stored = readStore()[key] || null;
+        const canonicalKey = rowKey(canonicalizeRow(rec));
+        const visible = catalogueRowForKey(canonicalKey) || catalogueRowForKey(key);
+        const shown = visible ? effectiveRow(visible, rowKey(visible)) : stored;
+        return {
+          key,
+          inDatabase: !!(stored || visible),
+          complete: !!stored || !!(visible && rowHasCompleteMetrics(visible)),
+          artist: (shown && shown.a) || a,
+          title: (shown && shown.t) || parts.title,
+          bpm: shown && validDbBpm(shown.b) ? Number(shown.b) : null,
+          durationSec: shown && validDbDuration(shown.d) ? Number(shown.d) : null
+        };
+      },
+      fileBatchTrack: (info) => {
+        const artist = cleanDbText(info && info.artist || '');
+        const title = String(info && info.title || '').trim();
+        if (!artist || !title) return { result: 'invalid' };
+        const parts = splitUploadedIdentity(title);
+        const album = String(info.album || '').trim();
+        const rec = {
+          t: parts.title, a: artist, r: parts.remixer || '',
+          rawTitle: parts.rawTitle || title,
+          variantLabel: parts.variantLabel || '',
+          album,
+          mixAlbum: looksLikeMixAlbum(album) ? album : '',
+          fileName: String(info.fileName || ''),
+          b: Math.round(Number(info.bpm) * 100) / 100,
+          d: Math.round(Number(info.durationSec) * 1000) / 1000,
+          ds: 'upload',
+          src: 'user',
+          dbCorrected: false,
+          at: Date.now()
+        };
+        if (!validDbBpm(rec.b) || !validDbDuration(rec.d) || !databaseIdentityLooksResolved(canonicalizeRow(rec))) return { result: 'invalid' };
+        const store = readStore();
+        const key = rowKey(rec);
+        if (store[key]) return { result: 'exists', key };
+        const canonicalKey = rowKey(canonicalizeRow(rec));
+        const visible = catalogueRowForKey(canonicalKey) || catalogueRowForKey(key);
+        if (visible && rowHasCompleteMetrics(visible)) return { result: 'exists', key };
+        const variant = normalizeStoredVariant({
+          rawTitle: rec.rawTitle, label: rec.variantLabel, b: rec.b, d: rec.d, ds: 'upload',
+          album: rec.album, mixAlbum: rec.mixAlbum, fileName: rec.fileName, at: rec.at
+        });
+        store[key] = { ...rec, variants: variant ? [variant] : [], at: Date.now() };
+        if (!writeStore(store)) return { result: 'full', key };
+        variationIndexByKey.set(key, 0);
+        return { result: visible ? 'filled' : 'added', key, bpm: rec.b, durationSec: rec.d };
       },
       getRowByKey: (key) => {
         const row=catalogueRowForKey(key); if(!row)return null;
@@ -35512,5 +35746,576 @@ html body #songDbSection .songdb-badge.is-needs-bpm {
   background: rgba(249,66,58,.08) !important;
 }
 </style>
+<style id="eb-db-batch-upload-v25-style">
+/* v25 batch upload panel (Database tab). */
+html body #songDbSection #ebDbBatch.eb-batch{
+  margin:0 0 18px;padding:14px 16px 12px;border-radius:18px;box-sizing:border-box;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0) 30%),
+    radial-gradient(120% 160% at 100% 100%,rgba(var(--eb-red-rgb,249,66,58),.09),transparent 70%),
+    linear-gradient(180deg,rgba(3,3,4,.94),rgba(0,0,0,.97));
+  border:1px solid rgba(var(--eb-red-rgb,249,66,58),.30);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  font-family:'Lido',serif;color:#ececee;
+}
+html body #songDbSection #ebDbBatch[hidden]{display:none!important}
+#ebDbBatch .eb-batch-top{display:flex;align-items:center;gap:10px;min-height:32px}
+#ebDbBatch .eb-batch-title{flex:1 1 auto;min-width:0;font-size:15px;line-height:1.3;color:#f3f3f4}
+#ebDbBatch .eb-batch-title b{font-weight:400;color:var(--eb-red,#F9423A)}
+html body #songDbSection #ebDbBatch .eb-batch-btn{
+  flex:0 0 auto;font:400 13px/1 'Lido',serif;color:#f3f3f4;min-height:32px;padding:0 14px;border-radius:10px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.14);
+  background:linear-gradient(rgba(255,255,255,.11),rgba(255,255,255,.02) 48%,rgba(255,255,255,0) 52%),linear-gradient(rgba(38,39,43,.9),rgba(13,13,15,.95));
+  box-shadow:0 6px 14px -8px #000,inset 0 1px 0 rgba(255,255,255,.08);
+}
+html body #songDbSection #ebDbBatch .eb-batch-btn:hover{border-color:rgba(var(--eb-red-rgb,249,66,58),.6)}
+html body #songDbSection #ebDbBatch .eb-batch-btn:disabled{opacity:.55;cursor:default}
+html body #songDbSection #ebDbBatch .eb-batch-btn[hidden]{display:none!important}
+#ebDbBatch .eb-batch-bar{height:4px;border-radius:999px;background:rgba(255,255,255,.08);margin:10px 0 8px;overflow:hidden}
+#ebDbBatch .eb-batch-bar span{display:block;height:100%;width:0;border-radius:inherit;background:var(--eb-red,#F9423A);
+  box-shadow:0 0 10px rgba(var(--eb-red-rgb,249,66,58),.7);transition:width .35s ease}
+#ebDbBatch .eb-batch-now{font-size:13px;line-height:1.35;color:#b6b7bc;min-height:1.35em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ebDbBatch .eb-batch-now:empty{display:none}
+#ebDbBatch .eb-batch-notes{font-size:12.5px;line-height:1.4;color:rgba(var(--eb-red-rgb,249,66,58),.9);margin-top:4px}
+#ebDbBatch .eb-batch-notes:empty,#ebDbBatch .eb-batch-notes[hidden]{display:none}
+#ebDbBatch .eb-batch-details{margin-top:6px}
+#ebDbBatch .eb-batch-details summary{cursor:pointer;font-size:13px;color:#b6b7bc;padding:4px 0;width:max-content}
+#ebDbBatch .eb-batch-details summary:hover{color:#f3f3f4}
+#ebDbBatch .eb-batch-list{list-style:none;margin:6px 0 0;padding:0 4px 0 0;max-height:300px;overflow:auto;overscroll-behavior:contain}
+#ebDbBatch .eb-batch-item{display:grid;grid-template-columns:9em minmax(0,1fr) max-content;column-gap:12px;row-gap:3px;
+  align-items:baseline;padding:8px 0;border-top:1px solid rgba(255,255,255,.06);font-size:13.5px}
+#ebDbBatch .eb-batch-state{font-size:10.5px;line-height:1;padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.14);
+  color:#83858c;background:rgba(255,255,255,.04);white-space:nowrap;justify-self:start}
+#ebDbBatch .is-added .eb-batch-state{color:var(--eb-red,#F9423A);border-color:rgba(var(--eb-red-rgb,249,66,58),.45);background:rgba(var(--eb-red-rgb,249,66,58),.08)}
+html body #songDbSection #ebDbBatch .eb-batch-name{min-width:0;overflow-wrap:anywhere;color:#ececee;font:inherit;text-align:left;
+  background:none;border:0;box-shadow:none;padding:0;margin:0;min-height:0;height:auto;border-radius:0}
+html body #songDbSection #ebDbBatch button.eb-batch-name{cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.22);text-underline-offset:3px}
+html body #songDbSection #ebDbBatch button.eb-batch-name:hover{color:var(--eb-red,#F9423A);text-decoration-color:currentColor}
+#ebDbBatch .is-skip .eb-batch-name{color:#b6b7bc}
+#ebDbBatch .eb-batch-val{color:#f3f3f4;white-space:nowrap;font-variant-numeric:tabular-nums}
+#ebDbBatch .eb-batch-why{grid-column:2 / -1;font-size:12px;line-height:1.35;color:#83858c}
+@media (max-width:640px){
+  html body #songDbSection #ebDbBatch.eb-batch{padding:12px 12px 10px;border-radius:16px}
+  #ebDbBatch .eb-batch-item{grid-template-columns:minmax(0,1fr);row-gap:4px}
+  #ebDbBatch .eb-batch-state{grid-row:1}
+  #ebDbBatch .eb-batch-name,#ebDbBatch .eb-batch-val,#ebDbBatch .eb-batch-why{grid-column:1}
+  #ebDbBatch .eb-batch-val{white-space:normal}
+}
+/* Dropping files on the Database */
+html body #songDbSection.eb-db-dropping{box-shadow:inset 0 0 0 2px rgba(var(--eb-red-rgb,249,66,58),.7),0 0 0 1px rgba(var(--eb-red-rgb,249,66,58),.35)!important}
+</style>
+<script id="eb-db-batch-upload-v25">
+/* v25: on the Database tab the existing Upload Music button becomes
+   "+ Database": up to 50 songs per batch go straight into the Song
+   Database without loading in the player. Every file is decoded and measured
+   with the player's own BPM detector (and its Database/online known-BPM
+   layers), so BPM, Time and Ë fill in as each song is filed. On the Player
+   tab the button works exactly as before. */
+(function () {
+  'use strict';
+  var LIMIT = 50;
+  var AUDIO_EXT = /\.(mp3|m4a|m4b|aac|mp4|wav|wave|flac|ogg|oga|opus|aif|aiff|aifc|caf|webm|weba|wma|alac|3gp)$/i;
+  var GENERIC = /^(?:unknown(?: artist| title| track)?|untitled|audio|track(?:\s*\d+)?|song(?:\s*\d+)?)$/i;
+  var LABEL_DB = '+ Database';
+  var TIP_DB = 'Add up to ' + LIMIT + ' songs to the Database. BPM, Time and Ë are measured from each file.';
+
+  function byId(id) { return document.getElementById(id); }
+  function pause(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function withTimeout(promise, ms, fallback) {
+    return new Promise(function (resolve) {
+      var done = false;
+      var t = setTimeout(function () { if (!done) { done = true; resolve(fallback); } }, ms);
+      Promise.resolve(promise).then(function (v) { if (!done) { done = true; clearTimeout(t); resolve(v); } },
+        function () { if (!done) { done = true; clearTimeout(t); resolve(fallback); } });
+    });
+  }
+  // The player's functions are top-level declarations, so they live on window.
+  function fn(name) {
+    try { return typeof window[name] === 'function' ? window[name] : null; } catch (_) { return null; }
+  }
+  function playerAudioContext() {
+    try { return typeof audioCtx !== 'undefined' && audioCtx ? audioCtx : null; } catch (_) { return null; }
+  }
+  function clock(sec) {
+    var s = Math.max(0, Math.round(Number(sec) || 0));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+  function bpmText(b) { return Number.isFinite(Number(b)) ? Number(b).toFixed(2) + ' BPM' : ''; }
+  function beatsText(b, d) {
+    if (!Number.isFinite(Number(b)) || !Number.isFinite(Number(d))) return '';
+    return (Number(b) / 60 * Number(d)).toFixed(2) + ' Ë';
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function init() {
+    var input = byId('file');
+    var section = byId('songDbSection');
+    if (!input || !section || section.__ebBatch) return;
+    section.__ebBatch = true;
+    var api = function () { return window.elapsedBeatsSongDbApi || null; };
+    var dbActive = function () { return !section.hidden; };
+
+    /* ---- the one upload button follows the tab ---------------------- */
+    var BUTTONS = ['ebUploadTab', 'loadAudioBtn'];
+    function syncButtons() {
+      var db = dbActive();
+      if (input.multiple !== db) input.multiple = db;
+      BUTTONS.forEach(function (id) {
+        var btn = byId(id);
+        if (!btn) return;
+        var helper = btn.querySelector('.nav-helper');
+        if (!btn.__ebOrig) {
+          btn.__ebOrig = {
+            label: helper ? helper.textContent : '',
+            aria: btn.getAttribute('aria-label'),
+            title: btn.getAttribute('title')
+          };
+        }
+        var o = btn.__ebOrig;
+        var label = db ? LABEL_DB : o.label;
+        if (helper && label && helper.textContent !== label) helper.textContent = label;
+        var aria = db ? 'Add up to ' + LIMIT + ' songs to the Database' : o.aria;
+        if (aria == null) btn.removeAttribute('aria-label'); else if (btn.getAttribute('aria-label') !== aria) btn.setAttribute('aria-label', aria);
+        var title = db ? TIP_DB : o.title;
+        if (title == null) btn.removeAttribute('title'); else if (btn.getAttribute('title') !== title) btn.setAttribute('title', title);
+        btn.classList.toggle('eb-upload-db-mode', db);
+      });
+    }
+    function onTabChange() { syncButtons(); }
+    new MutationObserver(onTabChange).observe(section, { attributes: true, attributeFilter: ['hidden', 'class'] });
+    BUTTONS.forEach(function (id) {
+      var btn = byId(id);
+      if (!btn) return;
+      new MutationObserver(function () {
+        var helper = btn.querySelector('.nav-helper');
+        if (dbActive() && helper && helper.textContent !== LABEL_DB) onTabChange();
+      }).observe(btn, { childList: true, subtree: true, characterData: true });
+    });
+    input.addEventListener('click', function () { input.multiple = dbActive(); }, true);
+    onTabChange();
+
+    function canBatch() { return !!(fn('analyzeTrackBPM') && api() && api().fileBatchTrack); }
+
+    /* Files chosen while the Database is showing never reach the player. */
+    window.addEventListener('change', function (e) {
+      if (e.target !== input || !dbActive() || !canBatch()) return;
+      e.stopImmediatePropagation();
+      e.stopPropagation();
+      var files = Array.prototype.slice.call(input.files || []);
+      try { input.value = ''; } catch (_) {}
+      if (files.length) start(files);
+    }, true);
+
+    /* Dropping files on the Database adds them too (desktop). */
+    var depth = 0;
+    function hasFiles(e) {
+      var types = (e.dataTransfer && e.dataTransfer.types) || [];
+      for (var i = 0; i < types.length; i++) if (types[i] === 'Files') return true;
+      return false;
+    }
+    section.addEventListener('dragenter', function (e) { if (!hasFiles(e)) return; e.preventDefault(); depth++; section.classList.add('eb-db-dropping'); });
+    section.addEventListener('dragover', function (e) { if (!hasFiles(e)) return; e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (_) {} });
+    section.addEventListener('dragleave', function (e) { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) section.classList.remove('eb-db-dropping'); });
+    section.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      depth = 0; section.classList.remove('eb-db-dropping');
+      var files = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
+      if (files.length && canBatch()) start(files);
+    });
+
+    /* ---- progress panel ---------------------------------------------- */
+    var panel = document.createElement('section');
+    panel.className = 'eb-batch';
+    panel.id = 'ebDbBatch';
+    panel.hidden = true;
+    panel.setAttribute('aria-label', 'Adding songs to the Database');
+    panel.innerHTML =
+      '<div class="eb-batch-top">' +
+        '<div class="eb-batch-title" id="ebDbBatchTitle" aria-live="polite"></div>' +
+        '<button type="button" class="eb-batch-btn" id="ebDbBatchStop">Stop</button>' +
+        '<button type="button" class="eb-batch-btn eb-batch-close" id="ebDbBatchClose" hidden>Close</button>' +
+      '</div>' +
+      '<div class="eb-batch-bar" id="ebDbBatchBar" role="progressbar" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><span id="ebDbBatchFill"></span></div>' +
+      '<div class="eb-batch-now" id="ebDbBatchNow"></div>' +
+      '<div class="eb-batch-notes" id="ebDbBatchNotes"></div>' +
+      '<details class="eb-batch-details" id="ebDbBatchDetails"><summary id="ebDbBatchSummary">Song by song</summary><ol class="eb-batch-list" id="ebDbBatchList"></ol></details>';
+    var head = section.querySelector(':scope > .songdb-head');
+    if (head && head.nextSibling) section.insertBefore(panel, head.nextSibling); else section.insertBefore(panel, section.firstChild);
+    var elTitle = byId('ebDbBatchTitle'), elStop = byId('ebDbBatchStop'), elClose = byId('ebDbBatchClose');
+    var elBar = byId('ebDbBatchBar'), elFill = byId('ebDbBatchFill'), elNow = byId('ebDbBatchNow');
+    var elNotes = byId('ebDbBatchNotes'), elList = byId('ebDbBatchList'), elSummary = byId('ebDbBatchSummary');
+    var elDetails = byId('ebDbBatchDetails');
+
+    var job = null;
+    elStop.addEventListener('click', function () {
+      if (!job || !job.running) return;
+      job.stop = true;
+      elStop.disabled = true;
+      elStop.textContent = 'Stopping…';
+    });
+    elClose.addEventListener('click', function () { if (!job || !job.running) panel.hidden = true; });
+    elList.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('.eb-batch-name[data-find]');
+      if (!b) return;
+      var q = byId('songdbQuery');
+      if (!q) return;
+      q.value = b.getAttribute('data-find');
+      q.dispatchEvent(new Event('input', { bubbles: true }));
+      try { q.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {}
+    });
+
+    var STATE = {
+      added: ['Added', 'is-added'],
+      filled: ['Filled in', 'is-added'],
+      exists: ['Already in Database', 'is-exists'],
+      unidentified: ['Not added', 'is-skip'],
+      invalid: ['Not added', 'is-skip'],
+      failed: ['Couldn’t read', 'is-skip'],
+      full: ['Not saved', 'is-skip']
+    };
+
+    function paint() {
+      if (!job) return;
+      var total = job.files.length, done = job.results.length, c = job.counts;
+      elBar.setAttribute('aria-valuemax', String(total));
+      elBar.setAttribute('aria-valuenow', String(done));
+      elFill.style.width = (total ? (done / total) * 100 : 0) + '%';
+      if (job.running) {
+        elTitle.innerHTML = 'Adding to Database <b>' + done + ' of ' + total + '</b>';
+      } else {
+        var bits = [];
+        if (c.added) bits.push(c.added + ' added');
+        if (c.filled) bits.push(c.filled + ' filled in');
+        if (c.exists) bits.push(c.exists + ' already there');
+        var skipped = (c.unidentified || 0) + (c.invalid || 0) + (c.failed || 0) + (c.full || 0);
+        if (skipped) bits.push(skipped + ' not added');
+        if (job.stoppedAt != null) bits.push((total - done) + ' not processed');
+        elTitle.innerHTML = (job.stoppedAt != null ? 'Stopped' : 'Done') + ' <b>' + esc(bits.join(' · ') || 'nothing to add') + '</b>';
+      }
+      elSummary.textContent = 'Song by song (' + done + ')';
+      elStop.hidden = !job.running;
+      elClose.hidden = job.running;
+    }
+    function setNow(text) { elNow.textContent = text || ''; }
+
+    function addItem(res) {
+      var meta = STATE[res.state] || STATE.failed;
+      var li = document.createElement('li');
+      li.className = 'eb-batch-item ' + meta[1];
+      var name = res.artist && res.title ? res.artist + ': ' + res.title : res.fileName;
+      var vals = [bpmText(res.bpm), res.durationSec ? clock(res.durationSec) : '', beatsText(res.bpm, res.durationSec)].filter(Boolean).join(' · ');
+      var findable = res.title && (res.state === 'added' || res.state === 'filled' || res.state === 'exists');
+      li.innerHTML =
+        '<span class="eb-batch-state">' + esc(meta[0]) + '</span>' +
+        (findable
+          ? '<button type="button" class="eb-batch-name" data-find="' + esc(res.title) + '" title="Show it in the Database">' + esc(name) + '</button>'
+          : '<span class="eb-batch-name">' + esc(name) + '</span>') +
+        '<span class="eb-batch-val">' + esc(vals) + '</span>' +
+        (res.why ? '<span class="eb-batch-why">' + esc(res.why) + '</span>' : '');
+      elList.appendChild(li);
+    }
+
+    var refreshTimer = 0, lastRefresh = 0;
+    function refreshSoon(now) {
+      var a = api();
+      if (!a || typeof a.refresh !== 'function') return;
+      var run = function () { refreshTimer = 0; lastRefresh = Date.now(); try { a.refresh(); } catch (_) {} };
+      if (now) { clearTimeout(refreshTimer); run(); return; }
+      if (refreshTimer) return;
+      var wait = Math.max(0, 1200 - (Date.now() - lastRefresh));
+      refreshTimer = setTimeout(run, wait);
+    }
+
+    function isAudio(f) {
+      return !!f && ((f.type && /^audio\//i.test(f.type)) || AUDIO_EXT.test(f.name || ''));
+    }
+
+    function start(list) {
+      if (job && job.running) {
+        panel.hidden = false;
+        var keep = job.notes || '';
+        elNotes.hidden = false;
+        elNotes.textContent = (keep ? keep + ' ' : '') + 'Still adding this batch. Wait for it to finish, or press Stop, before choosing more.';
+        clearTimeout(job.noteTimer);
+        job.noteTimer = setTimeout(function () { elNotes.textContent = keep; elNotes.hidden = !keep; }, 7000);
+        return;
+      }
+      var audio = list.filter(isAudio);
+      var files = audio.slice(0, LIMIT);
+      job = {
+        files: files, results: [], running: true, stop: false, stoppedAt: null,
+        counts: { added: 0, filled: 0, exists: 0, unidentified: 0, invalid: 0, failed: 0, full: 0 }
+      };
+      elList.innerHTML = '';
+      var notes = [];
+      if (audio.length > LIMIT) notes.push('Only the first ' + LIMIT + ' songs were taken. Choose the other ' + (audio.length - LIMIT) + ' in another batch.');
+      if (list.length > audio.length) notes.push((list.length - audio.length) + ' file' + (list.length - audio.length === 1 ? ' wasn’t audio' : 's weren’t audio') + ' and ' + (list.length - audio.length === 1 ? 'was' : 'were') + ' skipped.');
+      job.notes = notes.join(' ');
+      elNotes.textContent = job.notes;
+      elNotes.hidden = !notes.length;
+      elStop.disabled = false;
+      elStop.textContent = 'Stop';
+      panel.hidden = false;
+      try { panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+      if (!files.length) {
+        job.running = false;
+        paint();
+        setNow('No audio files in that selection.');
+        return;
+      }
+      paint();
+      run(job);
+    }
+
+    async function run(j) {
+      for (var i = 0; i < j.files.length; i++) {
+        if (j.stop) { j.stoppedAt = i; break; }
+        var file = j.files[i];
+        var res;
+        try {
+          res = await processFile(file, function (step) {
+            setNow(step + ' · ' + file.name + ' (' + (i + 1) + ' of ' + j.files.length + ')');
+          });
+        } catch (err) {
+          console.warn('[Database batch] ' + (file && file.name) + ':', err);
+          res = { state: 'failed', fileName: file.name, why: 'This browser couldn’t decode the audio in this file.' };
+        }
+        res.fileName = res.fileName || file.name;
+        j.results.push(res);
+        j.counts[res.state] = (j.counts[res.state] || 0) + 1;
+        addItem(res);
+        paint();
+        if (res.state === 'added' || res.state === 'filled') refreshSoon(false);
+        await pause(20);
+      }
+      j.running = false;
+      setNow('');
+      refreshSoon(true);
+      paint();
+    }
+
+    /* ---- one file ----------------------------------------------------- */
+    function readTags(file) {
+      return new Promise(function (resolve) {
+        var done = false;
+        var finish = function (t) { if (!done) { done = true; resolve(t || {}); } };
+        setTimeout(function () { finish({}); }, 8000);
+        try {
+          if (!window.jsmediatags) return finish({});
+          window.jsmediatags.read(file, {
+            onSuccess: function (tag) { finish((tag && tag.tags) || {}); },
+            onError: function () { finish({}); }
+          });
+        } catch (_) { finish({}); }
+      });
+    }
+
+    function readArrayBuffer(file) {
+      if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload = function () { resolve(r.result); };
+        r.onerror = function () { reject(r.error); };
+        r.readAsArrayBuffer(file);
+      });
+    }
+    function decodeWith(ctx, ab) {
+      return new Promise(function (resolve, reject) {
+        try {
+          var p = ctx.decodeAudioData(ab, resolve, reject);
+          if (p && typeof p.then === 'function') p.then(resolve, reject);
+        } catch (err) { reject(err); }
+      });
+    }
+    var fallbackCtx = null;
+    async function decodeFile(file) {
+      // The player's own AudioContext, so the sample rate (and therefore the
+      // measured BPM) matches what loading the same file in the player gives.
+      var ctx = null;
+      try {
+        var init = fn('initAudioCtx');
+        if (init) init();
+        ctx = playerAudioContext();
+      } catch (_) { ctx = null; }
+      if (!ctx) {
+        var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!fallbackCtx && OAC) fallbackCtx = new OAC(2, 44100, 44100);
+        ctx = fallbackCtx;
+      }
+      if (!ctx) throw new Error('No audio decoder available');
+      return decodeWith(ctx, await readArrayBuffer(file));
+    }
+
+    // analyzeTrackBPM keeps its last buffer for the known-BPM octave step;
+    // let a batch song's decoded audio go once it is filed.
+    function releaseBuffer(buffer) {
+      try {
+        if (typeof lastSmartTempo !== 'undefined' && lastSmartTempo && lastSmartTempo.buffer === buffer) lastSmartTempo = null;
+      } catch (_) {}
+    }
+
+    function rememberIdentity(file, id) {
+      var read = fn('readSmartIdentityCache'), write = fn('writeSmartIdentityCache'), keyFor = fn('smartIdentityCacheKey');
+      if (!read || !write || !keyFor) return;
+      try {
+        var cache = read();
+        cache[keyFor(file, id.album || '')] = { artist: id.artist, title: id.title, album: id.album || '', provider: id.provider || 'Song Database', updatedAt: Date.now() };
+        write(cache);
+      } catch (_) {}
+    }
+
+    async function knownBpmFor(artist, title, buffer) {
+      var pickKnownBpm = fn('pickKnownBpm'), chooseOctave = fn('chooseKnownBpmOctave');
+      if (!pickKnownBpm || !chooseOctave) return null;
+      var local = [];
+      try { local = (typeof window.elapsedBeatsDatabaseKnownBpm === 'function' && window.elapsedBeatsDatabaseKnownBpm(artist, title)) || []; } catch (_) { local = []; }
+      var hasConfirmed = local.some(function (s) { return s && s.exact && (s.tier === 'confirmed' || s.tier === 'learned'); });
+      var hasTrusted = local.some(function (s) { return s && s.exact; });
+      var merged = local;
+      if (!hasConfirmed && navigator.onLine && typeof window.elapsedBeatsOnlineKnownBpm === 'function') {
+        var online = await withTimeout(Promise.resolve().then(function () {
+          return window.elapsedBeatsOnlineKnownBpm(artist, title, { correctionsOnly: hasTrusted });
+        }), 12000, []);
+        var list = Array.isArray(online) ? online : [];
+        merged = list.filter(function (s) { return s && s.tier === 'cloud-confirmed'; })
+          .concat(local, list.filter(function (s) { return !(s && s.tier === 'cloud-confirmed'); }));
+      }
+      var pick = pickKnownBpm(merged);
+      if (!pick) return null;
+      var choice = chooseOctave(pick, buffer);
+      if (!choice || !Number.isFinite(Number(choice.bpm))) return null;
+      return { bpm: Number(choice.bpm), label: (pick.top && pick.top.label) || 'reference' };
+    }
+
+    async function processFile(file, step) {
+      var A = api();
+      var metadataText = fn('metadataText'), parseName = fn('parseFilenameMetadata');
+      var strip = fn('smartStripArtistPrefix') || function (t) { return String(t || '').trim(); };
+      var noisy = fn('smartLooksNoisy') || function () { return false; };
+      var analyze = fn('analyzeTrackBPM');
+
+      step('Reading tags');
+      var tags = await readTags(file);
+      var mt = metadataText || function () { for (var i = 0; i < arguments.length; i++) if (typeof arguments[i] === 'string' && arguments[i].trim()) return arguments[i].trim(); return ''; };
+      var fromName = parseName ? parseName(file.name) : { artist: '', title: String(file.name || '').replace(/\.[^.]+$/, ''), base: file.name, rawBase: file.name };
+      var taggedTitle = mt(tags.title, tags.TIT2, tags['©nam'], tags.name, tags.song) || '';
+      var taggedArtist = mt(tags.artist, tags.albumartist, tags.albumArtist, tags.TPE1, tags.TPE2, tags['©ART'], tags.aART) || '';
+      var album = mt(tags.album, tags.TALB, tags['©alb'], tags.collection, tags.collectionName) || '';
+      var cleanTagTitle = strip(taggedTitle, taggedArtist);
+
+      // Identity, most trusted first: embedded tags, an identity this browser
+      // already confirmed for this file, an exact Database name match.
+      var id = null;
+      if (taggedArtist && cleanTagTitle && !GENERIC.test(taggedArtist.trim()) && !GENERIC.test(cleanTagTitle.trim())
+          && !noisy(taggedArtist) && !noisy(cleanTagTitle)) {
+        id = { artist: taggedArtist.trim(), title: cleanTagTitle.trim(), album: album, via: 'tags' };
+      }
+      if (!id) {
+        try {
+          var read = fn('readSmartIdentityCache'), keyFor = fn('smartIdentityCacheKey');
+          var cached = read && keyFor ? read()[keyFor(file, album)] : null;
+          if (cached && cached.artist && cached.title) id = { artist: cached.artist, title: strip(cached.title, cached.artist), album: cached.album || album, via: 'remembered' };
+        } catch (_) {}
+      }
+      // Tags one or two letters off a Database song take its spelling (v26).
+      if (id && id.via === 'tags' && A && typeof A.findNearSpelling === 'function') {
+        var nearTag = A.findNearSpelling(id.artist, id.title);
+        if (nearTag) id = { artist: nearTag.artist, title: nearTag.title, album: album, via: 'spelling', typed: id.title, provider: 'Song Database' };
+      }
+      var pairs = [[taggedArtist, taggedTitle], [fromName.artist, fromName.title], [taggedArtist || fromName.artist, taggedTitle || fromName.title]];
+      if (!id && A && typeof A.findIdentity === 'function') {
+        for (var p = 0; p < pairs.length && !id; p++) {
+          var hit = pairs[p][0] && pairs[p][1] ? A.findIdentity(pairs[p][0], pairs[p][1]) : null;
+          if (hit) id = { artist: hit.artist, title: hit.title, album: album, via: 'database', provider: 'Song Database' };
+        }
+      }
+      if (!id && A && typeof A.findNearSpelling === 'function') {
+        for (var q = 0; q < pairs.length && !id; q++) {
+          var near = pairs[q][0] && pairs[q][1] ? A.findNearSpelling(pairs[q][0], pairs[q][1]) : null;
+          if (near) id = { artist: near.artist, title: near.title, album: album, via: 'spelling', typed: pairs[q][1], provider: 'Song Database' };
+        }
+      }
+      if (!id && !taggedArtist && !fromName.artist && A && typeof A.findIdentityByTitle === 'function') {
+        var typedTitle = cleanTagTitle || fromName.title;
+        var hitT = A.findIdentityByTitle(typedTitle);
+        if (hitT) id = { artist: hitT.artist, title: hitT.title, album: album, via: hitT.spelling ? 'spelling' : 'title', typed: typedTitle, provider: 'Song Database' };
+      }
+
+      var st = id && A.batchRowState ? A.batchRowState(id.artist, id.title) : null;
+      if (st && st.complete) {
+        if (id.via === 'database' || id.via === 'title' || id.via === 'spelling') rememberIdentity(file, id);
+        return { state: 'exists', artist: st.artist, title: st.title, bpm: st.bpm, durationSec: st.durationSec,
+          why: id.via === 'title' ? 'Matched by title. A song you saved, or one with a BPM and Time, isn’t overwritten.' : '' };
+      }
+
+      step('Decoding');
+      var buffer = await decodeFile(file);
+      try {
+        step('Measuring BPM');
+        await pause(30);
+        var analysis = analyze(buffer);
+        var measured = Number(analysis && (analysis.globalBpm || analysis.measuredBpm));
+        var duration = Number(buffer.duration);
+
+        if (!id && navigator.onLine) {
+          var search = fn('smartSearchOnlineIdentity');
+          if (search) {
+            step('Identifying online');
+            var cleanStem = fn('smartCleanFilenameStem');
+            var ctx = {
+              rawBase: fromName.rawBase || String(file.name || ''),
+              cleanBase: fromName.base || (cleanStem ? cleanStem(file.name) : file.name),
+              filenameArtist: fromName.artist || '', filenameTitle: fromName.title || '',
+              taggedArtist: taggedArtist, taggedTitle: taggedTitle, album: album, duration: duration
+            };
+            var online = await withTimeout(search(ctx), 25000, null);
+            if (online && online.artist && online.title) {
+              id = { artist: String(online.artist).trim(), title: strip(String(online.title).trim(), online.artist), album: online.album || album, via: 'online', provider: online.provider || 'smart-online' };
+            }
+          }
+        }
+        if (!id) {
+          return { state: 'unidentified', bpm: measured, durationSec: duration,
+            why: navigator.onLine
+              ? 'No artist and title found. Name the file “Artist - Title” or add Artist and Title tags.'
+              : 'No artist and title in the file. Reconnect to identify it online, or name it “Artist - Title”.' };
+        }
+        if (id.via !== 'tags') rememberIdentity(file, id);
+        st = A.batchRowState ? A.batchRowState(id.artist, id.title) : null;
+        if (st && st.complete) {
+          return { state: 'exists', artist: st.artist, title: st.title, bpm: st.bpm, durationSec: st.durationSec };
+        }
+
+        step('Checking known BPM');
+        var known = await knownBpmFor(id.artist, id.title, buffer);
+        var bpm = known ? known.bpm : measured;
+        var r = A.fileBatchTrack({ artist: id.artist, title: id.title, album: id.album || album, fileName: file.name, bpm: bpm, durationSec: duration });
+        var shown = st ? { artist: st.artist, title: st.title } : { artist: id.artist, title: id.title };
+        var why = [];
+        if (known) why.push('BPM from ' + known.label);
+        else why.push('BPM measured from the audio');
+        if (id.via === 'title') why.push('matched by title');
+        if (id.via === 'spelling') why.push('filed under the Database spelling (the file says \u201C' + id.typed + '\u201D)');
+        if (id.via === 'online') why.push('identified online');
+        if (r.result === 'invalid') return { state: 'invalid', artist: shown.artist, title: shown.title, bpm: bpm, durationSec: duration, why: 'The BPM or length is outside what the Database accepts.' };
+        if (r.result === 'full') return { state: 'full', artist: shown.artist, title: shown.title, bpm: bpm, durationSec: duration, why: 'This browser’s storage is full, so the row wasn’t saved.' };
+        if (r.result === 'exists') return { state: 'exists', artist: shown.artist, title: shown.title, bpm: st && st.bpm, durationSec: st && st.durationSec };
+        return { state: r.result, artist: shown.artist, title: shown.title, bpm: r.bpm, durationSec: r.durationSec, why: why.join(' · ') };
+      } finally {
+        releaseBuffer(buffer);
+        buffer = null;
+      }
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+  else init();
+})();
+</script>
 </body>
 </html>
