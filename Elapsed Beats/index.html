@@ -17214,6 +17214,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     }
 
     function renderBody(rows, rowOffset = 0) {
+      // Cloud sync (every minute), rotation or the on-screen keyboard can ask
+      // for a re-render mid-edit; keep the open BPM editor. Closing it renders.
+      if (activeBpmEditor && activeBpmEditor.input && activeBpmEditor.input.isConnected) return;
       if (!rows.length) {
         bodyEl.innerHTML = '';
         emptyEl.hidden = false;
@@ -17253,7 +17256,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
             case 'title':   return `<td class="songdb-title-cell">${titleHtml}</td>`;
             case 'artist':  return `<td class="songdb-artist${col.cls ? ' ' + col.cls : ''}">${escapeHtml(row.a || '—')}</td>`;
             case 'remixer': return `<td class="songdb-remixer">${escapeHtml(row.r || '—')}</td>`;
-            case 'bpm':     return `<td class="songdb-bpm" data-db-bpm="true">${isFinite(shown.b) ? shown.b.toFixed(2) : '—'}</td>`;
+            case 'bpm':     return `<td class="songdb-bpm" data-db-bpm="true" title="Double-click (mouse, trackpad or pen) or long-press (touch) to correct this BPM">${isFinite(shown.b) ? shown.b.toFixed(2) : '—'}</td>`;
             case 'flux': {
               const info = fluxReading(row), label = info.level.label;
               const confidence = info.source === 'player' ? 'measured from uploaded audio'
@@ -18096,8 +18099,11 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         : null;
     };
 
-    let activeBpmEditor = null;
+    var activeBpmEditor = null; // var: renderBody (defined above) checks it before this line runs
     let pendingBpmCellClick = 0;
+    let longPressFocusPending = false;
+    let longPressCell = null;
+    let longPressKey = '';
     let lastDbPointerType = 'mouse';
     let suppressDbClickUntil = 0;
     let longPressTimer = 0;
@@ -18111,6 +18117,11 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
       const input = state.input;
       const value = input ? parseFloat(input.value) : NaN;
+      if (save && isFinite(value) && isFinite(state.startValue) &&
+          Math.round(value * 100) === Math.round(state.startValue * 100)) {
+        render();
+        return;
+      }
       if (save) {
         if (!isFinite(value) || value < 40 || value > 300) {
           setStatus('BPM correction must be between 40 and 300.');
@@ -18161,14 +18172,26 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       render();
     }
 
-    function beginDatabaseBpmEditor(tr, cell) {
+    function beginDatabaseBpmEditor(tr, cell, opts) {
       if (!tr || !cell) return false;
+      const deferFocus = !!(opts && opts.deferFocus);
       const key = tr.dataset.rowKey || '';
+      if (activeBpmEditor) {
+        // Starting another edit keeps what was typed in the open one.
+        const prev = activeBpmEditor;
+        const typed = prev.input ? parseFloat(prev.input.value) : NaN;
+        const changed = isFinite(typed) && !(isFinite(prev.startValue) && Math.round(typed * 100) === Math.round(prev.startValue * 100));
+        closeDatabaseBpmEditor(changed);
+        if (!cell.isConnected) {
+          const again = bpmCellForKey(key);
+          if (!again || !again.cell) return false;
+          tr = again.tr; cell = again.cell;
+        }
+      }
       const row = catalogueRowForKey(key);
       if (!row) return false;
       const shown = effectiveRow(row, key);
 
-      if (activeBpmEditor) closeDatabaseBpmEditor(false);
       const input = document.createElement('input');
       input.type = 'number';
       input.min = '40';
@@ -18183,7 +18206,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       cell.classList.add('is-db-editing');
       cell.textContent = '';
       cell.appendChild(input);
-      activeBpmEditor = { key, tr, cell, input };
+      activeBpmEditor = { key, tr, cell, input, startValue: isFinite(Number(shown.b)) ? Math.round(Number(shown.b) * 100) / 100 : NaN };
 
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -18201,47 +18224,118 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         if (activeBpmEditor && activeBpmEditor.input === input) closeDatabaseBpmEditor(true);
       }, { once: true });
 
-      requestAnimationFrame(() => { input.focus(); input.select(); });
-      setStatus('Edit database BPM, then press Enter or tap away to save. Esc cancels. Digital BPM will not change.');
+      if (!deferFocus) requestAnimationFrame(() => {
+        try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
+        try { input.select(); } catch (_) {}
+      });
+      setStatus('Type the corrected BPM, then press Enter or tap away to save. It syncs to every device. Esc cancels. Digital BPM will not change.');
       return true;
     }
 
     function cancelLongPress() {
       if (longPressTimer) clearTimeout(longPressTimer);
       longPressTimer = 0;
+      if (longPressCell) longPressCell.classList.remove('is-db-pressing');
+      longPressCell = null;
     }
 
+    function bpmCellForKey(key) {
+      if (!key) return null;
+      const rows = bodyEl.querySelectorAll('tr[data-row-key]');
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i].dataset.rowKey === key) return { tr: rows[i], cell: rows[i].querySelector('td.songdb-bpm') };
+      }
+      return null;
+    }
+
+    // iPhone / iPad only raise the keyboard when focus() runs inside a real
+    // touch handler, so a long-press opens the editor and the finger's
+    // release focuses it.
+    function focusPendingBpmEditor() {
+      if (!longPressFocusPending) return false;
+      longPressFocusPending = false;
+      const state = activeBpmEditor;
+      if (!state || !state.input || !state.input.isConnected) return false;
+      try { state.input.focus({ preventScroll: true }); } catch (_) { state.input.focus(); }
+      try { state.input.select(); } catch (_) {}
+      return true;
+    }
+
+    /* Long-press (550 ms): a finger on phones, iPad, Android tablets and
+       touch-screen laptops, or a stylus (Apple Pencil, Surface / Android pens).
+       The gesture follows the pointer actually used, not a device guess. */
     bodyEl.addEventListener('pointerdown', (e) => {
       lastDbPointerType = e.pointerType || 'mouse';
       const cell = e.target.closest('td.songdb-bpm');
       const tr = e.target.closest('tr');
       if (!cell || !tr || e.target.closest('.songdb-bpm-editor')) return;
-      if (lastDbPointerType !== 'touch') return;
-
+      if (lastDbPointerType !== 'touch' && lastDbPointerType !== 'pen') return;
       cancelLongPress();
+      if (e.isPrimary === false) return;               // second finger = pinch, not a hold
       longPressStartX = e.clientX;
       longPressStartY = e.clientY;
+      longPressKey = tr.dataset.rowKey || '';
+      longPressCell = cell;
+      cell.classList.add('is-db-pressing');
       longPressTimer = setTimeout(() => {
         longPressTimer = 0;
+        let hitTr = tr, hitCell = cell;
+        if (!hitCell.isConnected) {                    // table re-rendered during the hold
+          const again = bpmCellForKey(longPressKey);
+          if (!again || !again.cell) { cancelLongPress(); return; }
+          hitTr = again.tr; hitCell = again.cell;
+        }
+        cancelLongPress();
         suppressDbClickUntil = performance.now() + 900;
-        beginDatabaseBpmEditor(tr, cell);
-      }, 650);
+        if (beginDatabaseBpmEditor(hitTr, hitCell, { deferFocus: true })) {
+          longPressFocusPending = true;
+          try { if (navigator.vibrate) navigator.vibrate(12); } catch (_) {}
+        }
+      }, 550);
     });
 
     bodyEl.addEventListener('pointermove', (e) => {
       if (!longPressTimer) return;
-      if (Math.hypot(e.clientX - longPressStartX, e.clientY - longPressStartY) > 12) cancelLongPress();
+      if (Math.hypot(e.clientX - longPressStartX, e.clientY - longPressStartY) > 10) cancelLongPress();
     });
-    bodyEl.addEventListener('pointerup', cancelLongPress);
-    bodyEl.addEventListener('pointercancel', cancelLongPress);
+    bodyEl.addEventListener('pointerup', (e) => {
+      cancelLongPress();
+      if (!longPressFocusPending) return;
+      // Touch: touchend (a trusted gesture on iOS) focuses; this is only the
+      // fallback for browsers that send no touch events.
+      if (e.pointerType === 'touch' && 'ontouchend' in window) { setTimeout(focusPendingBpmEditor, 150); return; }
+      focusPendingBpmEditor();
+    });
+    bodyEl.addEventListener('pointercancel', () => {
+      cancelLongPress();
+      if (longPressFocusPending) setTimeout(focusPendingBpmEditor, 0);
+    });
+    bodyEl.addEventListener('touchend', (e) => {
+      if (focusPendingBpmEditor()) e.preventDefault();  // the release must not also tap the row
+    }, { passive: false });
+    bodyEl.addEventListener('touchcancel', () => {
+      cancelLongPress();
+      if (longPressFocusPending) setTimeout(focusPendingBpmEditor, 0);
+    });
+    window.addEventListener('scroll', cancelLongPress, { capture: true, passive: true });
 
-    // Prevent the browser's own touch-callout menu from stealing the hold.
+    // Keep the browser's own long-press menus and text selection out of the way.
     bodyEl.addEventListener('contextmenu', (e) => {
-      if (lastDbPointerType === 'touch' && e.target.closest('td.songdb-bpm')) e.preventDefault();
+      if (!e.target.closest || !e.target.closest('td.songdb-bpm')) return;
+      if (lastDbPointerType === 'touch' || lastDbPointerType === 'pen' || performance.now() < suppressDbClickUntil) e.preventDefault();
+    });
+    bodyEl.addEventListener('selectstart', (e) => {
+      const el = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
+      if (el && el.closest('td.songdb-bpm') && !el.closest('.songdb-bpm-editor')) e.preventDefault();
     });
 
+    /* Double-click: mouse, trackpad (including an iPad trackpad) and pen on
+       desktops, laptops, Surface and Chromebooks. Decided by the pointer that
+       actually clicked, so touch-screen laptops and devices that misreport
+       hover/pointer media queries still work. A finger double-tap is ignored
+       (taps cycle variations); fingers use the long-press. */
     bodyEl.addEventListener('dblclick', (e) => {
-      if (!fineDatabasePointer()) return;
+      if (lastDbPointerType === 'touch') return;
       const cell = e.target.closest('td.songdb-bpm');
       const tr = e.target.closest('tr');
       if (!cell || !tr || e.target.closest('.songdb-bpm-editor')) return;
@@ -18249,8 +18343,28 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       e.stopPropagation();
       clearTimeout(pendingBpmCellClick);
       pendingBpmCellClick = 0;
+      try { const sel = window.getSelection && window.getSelection(); if (sel) sel.removeAllRanges(); } catch (_) {}
       beginDatabaseBpmEditor(tr, cell);
     });
+
+    /* A tap or click anywhere else saves (iOS does not always blur a field on
+       a plain tap). A drag/scroll does not. An editor that never got focus
+       simply closes. */
+    let bpmOutsideDown = null;
+    document.addEventListener('pointerdown', (e) => {
+      bpmOutsideDown = null;
+      if (!activeBpmEditor) return;
+      if (e.target && e.target.closest && e.target.closest('.songdb-bpm-editor')) return;
+      bpmOutsideDown = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    }, true);
+    document.addEventListener('pointerup', (e) => {
+      const down = bpmOutsideDown; bpmOutsideDown = null;
+      const state = activeBpmEditor;
+      if (!down || !state || down.id !== e.pointerId || longPressFocusPending) return;
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) return;
+      if (document.activeElement === state.input) state.input.blur();
+      else closeDatabaseBpmEditor(false);
+    }, true);
 
     async function addDatabaseRowToProfile(button, key) {
       if (!button || !key || button.dataset.busy === '1') return;
@@ -18318,7 +18432,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const bpmCell = e.target.closest('td.songdb-bpm');
       // A single desktop click on BPM still selects the row, but waits briefly
       // so a double-click can open the editor without toggling selection twice.
-      if (bpmCell && lastDbPointerType !== 'touch' && fineDatabasePointer()) {
+      if (bpmCell && lastDbPointerType !== 'touch') {
         clearTimeout(pendingBpmCellClick);
         if (e.detail > 1) return;
         pendingBpmCellClick = setTimeout(() => {
@@ -18332,6 +18446,12 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
     bodyEl.addEventListener('keydown', (e) => {
       if (e.target.closest('.songdb-bpm-editor')) return;
+      if (e.key === 'F2') {
+        const tr = e.target.closest('tr[data-row-key]');
+        const cell = tr && tr.querySelector('td.songdb-bpm');
+        if (cell) { e.preventDefault(); beginDatabaseBpmEditor(tr, cell); }
+        return;
+      }
       if (e.key !== 'Enter' && e.key !== ' ') return;
       const tr = e.target.closest('tr');
       if (!tr) return;
@@ -34872,5 +34992,36 @@ html body #mainContent .display-shell .media-controls .transport-btn:disabled {
   if (h0) h0.addEventListener('scroll', function () { if (h0.scrollTop || h0.scrollLeft) { h0.scrollTop = 0; h0.scrollLeft = 0; } }, { passive: true });
 })();
 </script>
+<style id="eb-songdb-bpm-edit-everywhere-v21">
+/* v21: BPM correction on every device, for every Song Database row.
+   Double-click with a mouse / trackpad / pen; long-press with a finger or
+   stylus. The BPM value never starts a text selection or a system callout,
+   the press glows while it is held, and the editor uses 16px text on touch
+   screens so iPhone / iPad Safari does not zoom the page when it opens. */
+html body #songDbSection .songdb-table td.songdb-bpm {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html body #songDbSection .songdb-table td.songdb-bpm.is-db-pressing {
+  color: #fff !important;
+  text-shadow: 0 0 6px rgba(249,66,58,.95), 0 0 18px rgba(249,66,58,.6) !important;
+  transition: color .5s ease, text-shadow .5s ease;
+}
+html body #songDbSection .songdb-table td.songdb-bpm.is-db-editing { overflow: visible !important; }
+html body #songDbSection .songdb-bpm-editor {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: manipulation;
+}
+@media (pointer: coarse), (any-pointer: coarse) {
+  html body #songDbSection .songdb-bpm-editor {
+    font-size: 16px !important;
+    height: 36px;
+    width: 96px;
+  }
+}
+</style>
 </body>
 </html>
