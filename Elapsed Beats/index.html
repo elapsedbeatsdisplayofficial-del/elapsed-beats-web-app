@@ -19163,6 +19163,78 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
     addCurrentEl.addEventListener('click', () => upsertLoadedTrack(false));
 
+    /* v22: a song you upload is measured, so once its Artist + Title are
+       confirmed and its BPM is known it joins the Song Database by itself
+       (as a Verified row) and an artist search finds it. Songs analyzed
+       before this existed are filed once from the Profile's player
+       analysis. An existing row is never touched, so a shared BPM correction
+       can never be undone this way; "Add loaded track" and saving a BPM still
+       update a row on purpose. Nothing here is published to the cloud. */
+    let autoFiledLoadMark = '';
+    function autoFileLoadedTrack() {
+      let analysed = false;
+      try { analysed = !!trackBpmData; } catch (_) {}
+      if (!analysed) return false;
+      const rec = loadedTrack();
+      if (!rec) return false;
+      const key = rowKey(rec);
+      let token = '';
+      try { token = String(currentLoadToken); } catch (_) {}
+      const mark = token + '|' + key;
+      if (mark === autoFiledLoadMark) return false;
+      autoFiledLoadMark = mark;
+      if (readStore()[key]) return false;
+      const canonicalKey = rowKey(canonicalizeRow(rec));
+      if (allCatalogueRows().some(row => rowKey(row) === canonicalKey)) return false;
+      const ok = upsertLoadedTrack(true);
+      if (ok) setStatus(`${rec.a}: ${rec.t} added to the Song Database — ${rec.b.toFixed(2)} BPM measured from your upload.`);
+      return ok;
+    }
+
+    const PROFILE_DB_BACKFILL_KEY = 'elapsedBeats.songDb.profileBackfill.v1';
+    let profileBackfillDone = false;
+    function fileAnalyzedProfileSongs() {
+      let profile = null;
+      try { profile = typeof window.readTasteProfile === 'function' ? window.readTasteProfile() : null; } catch (_) {}
+      if (!profile) return;                       // Profile not ready yet: try again on the next tick
+      profileBackfillDone = true;
+      const analysis = (profile && profile.analysis) || {};
+      let done = {};
+      try { done = JSON.parse(localStorage.getItem(PROFILE_DB_BACKFILL_KEY) || '{}') || {}; } catch (_) { done = {}; }
+      const store = readStore();
+      const visible = new Set(allCatalogueRows().map(row => rowKey(row)));
+      let added = 0, marked = 0;
+      Object.keys(analysis).forEach(id => {
+        const a = analysis[id];
+        if (!a || (a.source && a.source !== 'Player analysis')) return;
+        const artist = String(a.artist || '').trim(), title = String(a.title || '').trim();
+        const bpm = Number(a.bpm), dur = Number(a.durationSec);
+        if (!artist || !title || !validDbBpm(bpm) || !validDbDuration(dur)) return;
+        const parts = splitUploadedIdentity(title);
+        const rec = {
+          t: parts.title, a: artist, r: parts.remixer || '',
+          rawTitle: parts.rawTitle || title, variantLabel: parts.variantLabel || '',
+          album: '', mixAlbum: '', fileName: '',
+          b: Math.round(bpm * 100) / 100, d: Math.round(dur * 1000) / 1000,
+          ds: 'upload', src: 'user', dbCorrected: false,
+          at: Number(a.updatedAt) || Date.now()
+        };
+        const key = rowKey(rec);
+        if (!key || done[key]) return;
+        done[key] = 1; marked++;                  // filed at most once, so a row you delete stays deleted
+        const canonical = canonicalizeRow(rec);
+        if (store[key] || visible.has(rowKey(canonical)) || !databaseIdentityLooksResolved(canonical)) return;
+        const variant = normalizeStoredVariant({
+          rawTitle: rec.rawTitle, label: rec.variantLabel, b: rec.b, d: rec.d, ds: 'upload',
+          album: '', mixAlbum: '', fileName: '', at: rec.at
+        });
+        store[key] = { ...rec, variants: variant ? [variant] : [], at: Date.now() };
+        added++;
+      });
+      if (marked) { try { localStorage.setItem(PROFILE_DB_BACKFILL_KEY, JSON.stringify(done)); } catch (_) {} }
+      if (added && writeStore(store)) refresh();
+    }
+
     // Saving a BPM in the player is a measurement, so it also files the row
     // and publishes the learned BPM to the shared Version 17 cloud memory.
     const saveBtn = document.getElementById('saveOverride');
@@ -19180,6 +19252,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     setInterval(() => {
       const ready = !!loadedTrack();
       if (addCurrentEl.disabled === ready) addCurrentEl.disabled = !ready;
+      if (ready) { try { autoFileLoadedTrack(); } catch (err) { console.warn('[Song Database] Auto-file failed:', err); } }
+      if (!profileBackfillDone) { try { fileAnalyzedProfileSongs(); } catch (err) { profileBackfillDone = true; console.warn('[Song Database] Profile backfill failed:', err); } }
     }, 900);
 
     /* ── Export / import ───────────────────────────────────────── */
@@ -29760,8 +29834,15 @@ html body #mainContent #songDbSection .songdb-mobile-compact-toggle .songdb-mobi
       if(typeof window.applyFileMetadata==='function' && !window.applyFileMetadata.__ebWrapped){
         var afm=window.applyFileMetadata;
         var wrapped=function(file,tg){
-          var y=''; try{ var src=tg||{}; var raw=[src.year,src.TYER,src.TDRC,src.date,src['\u00A9day']].map(function(v){ return v && typeof v==='object' && 'data' in v ? v.data : v; }).filter(Boolean)[0]; var mm=String(raw||'').match(/(19|20)\d{2}/); y=mm?mm[0]:''; }catch(e){}
-          state.year=y; state.rec=null; state.key='';
+          var y=''; try{ var src=tg||{}; var raw=[src.year,src.TYER,src.TDRC,src.TDRL,src.TYE,src.TDOR,src.TORY,src.date,src.DATE,src.YEAR,src['\u00A9day']].map(function(v){ return v && typeof v==='object' && 'data' in v ? v.data : v; }).filter(Boolean); for(var ri=0;ri<raw.length && !y;ri++){ var mm=String(raw[ri]||'').match(/(18[89]\d|19\d\d|20\d\d)/); y=mm?mm[1]:''; } }catch(e){}
+          state.year=y; state.rec=null; state.key=''; state.yearFile=file; var yearSerial=state.yearSerial=(state.yearSerial||0)+1;
+          /* The tag library never reads a FLAC's DATE/YEAR and cannot read WAV, AIFF or Ogg
+             tags at all, so when it reports no year, read the file's own tags directly. */
+          if(!y && file && typeof window.ebReadEmbeddedYear==='function'){
+            window.ebReadEmbeddedYear(file).then(function(fy){
+              if(fy && state.yearSerial===yearSerial && state.yearFile===file){ state.year=fy; lastSig=''; try{ render(); }catch(e){} }
+            });
+          }
           try{ if(window.__ebHeaderArtReset) window.__ebHeaderArtReset(); }catch(e){}
           var out=afm.apply(this,arguments); try{ render(); }catch(e){} return out;
         };
@@ -35023,5 +35104,221 @@ html body #songDbSection .songdb-bpm-editor {
   }
 }
 </style>
+<script id="eb-embedded-year-v22">
+/* v22: read a release year straight from an audio file's own tags.
+   Used when the tag library reports none: jsmediatags never reads a FLAC's
+   DATE / YEAR comment and cannot read WAV, AIFF or Ogg tags at all.
+   Covers FLAC Vorbis comments (DATE, YEAR, ORIGINALDATE ... also FLAC files
+   with an ID3 tag in front), Ogg Vorbis / Opus / FLAC-in-Ogg, WAV (RIFF INFO
+   ICRD and embedded ID3), AIFF (embedded ID3), MP4 / M4A (©day), and MP3
+   ID3v2.2-2.4 (TDRC, TYER, TDRL, TDOR, TORY) plus ID3v1. Only the few small
+   blocks that hold tags are read, never the audio.                       */
+(function () {
+  'use strict';
+  var YEAR_RE = /(?:^|[^0-9])(18[89]\d|19\d\d|20\d\d)(?![0-9])/;
+  var utf8 = typeof TextDecoder === 'function' ? new TextDecoder('utf-8') : null;
+  function yearIn(v) { var m = String(v == null ? '' : v).match(YEAR_RE); return m ? m[1] : ''; }
+  function bytes(file, start, end) {
+    start = Math.max(0, start); end = Math.min(file.size, end);
+    if (!(end > start)) return Promise.resolve(new Uint8Array(0));
+    var blob = file.slice(start, end);
+    if (blob.arrayBuffer) return blob.arrayBuffer().then(function (b) { return new Uint8Array(b); });
+    return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(new Uint8Array(r.result)); }; r.onerror = rej; r.readAsArrayBuffer(blob); });
+  }
+  function ascii(b, o, n) { var s = ''; for (var i = 0; i < n && o + i < b.length; i++) s += String.fromCharCode(b[o + i]); return s; }
+  function le32(b, o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
+  function be32(b, o) { return ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0; }
+  function text8(b) { if (utf8) { try { return utf8.decode(b); } catch (_) {} } return ascii(b, 0, b.length); }
+
+  /* ---- Vorbis comments (FLAC, Ogg Vorbis, Opus, Speex) ---- */
+  var VORBIS_KEYS = ['DATE', 'YEAR', 'RELEASEDATE', 'RELEASE DATE', 'RELEASE_DATE', 'ORIGINALDATE', 'ORIGINALYEAR', 'ORIGINAL YEAR', 'ORIGINALRELEASEDATE'];
+  function vorbisYear(b, o) {
+    var map = {};
+    if (o + 8 <= b.length) {
+      o += 4 + le32(b, o);                                   // vendor string
+      if (o + 4 <= b.length) {
+        var n = le32(b, o); o += 4;
+        for (var i = 0; i < n && o + 4 <= b.length; i++) {
+          var len = le32(b, o); o += 4;
+          if (len < 4096 && o + len <= b.length) {             // skip cover-art comments
+            var c = text8(b.subarray(o, o + len)), eq = c.indexOf('=');
+            if (eq > 0) { var k = c.slice(0, eq).trim().toUpperCase(); if (!(k in map)) map[k] = c.slice(eq + 1); }
+          }
+          o += len;
+        }
+      }
+    }
+    for (var j = 0; j < VORBIS_KEYS.length; j++) { var y = yearIn(map[VORBIS_KEYS[j]]); if (y) return y; }
+    return '';
+  }
+
+  /* ---- ID3v2.2 / 2.3 / 2.4 ---- */
+  var ID3_FRAMES = ['TDRC', 'TYER', 'TYE', 'TDRL', 'TDOR', 'TORY', 'TOR'];
+  function syncsafe(b, o) { return ((b[o] & 0x7f) << 21) | ((b[o + 1] & 0x7f) << 14) | ((b[o + 2] & 0x7f) << 7) | (b[o + 3] & 0x7f); }
+  function frameText(b) {
+    if (!b.length) return '';
+    var enc = b[0], body = b.subarray(1);
+    try {
+      if (enc === 1) return new TextDecoder(body[0] === 0xfe && body[1] === 0xff ? 'utf-16be' : 'utf-16le').decode(body);
+      if (enc === 2) return new TextDecoder('utf-16be').decode(body);
+    } catch (_) {}
+    return enc === 3 ? text8(body) : ascii(body, 0, body.length);
+  }
+  function id3Year(b) {
+    if (ascii(b, 0, 3) !== 'ID3') return '';
+    var ver = b[3], flags = b[5], end = Math.min(b.length, 10 + syncsafe(b, 6)), p = 10, found = {};
+    if (flags & 0x40) p += ver === 4 ? syncsafe(b, p) : be32(b, p) + 4;   // extended header
+    var hdr = ver === 2 ? 6 : 10;
+    while (p + hdr <= end) {
+      var id = ascii(b, p, ver === 2 ? 3 : 4);
+      var size = ver === 2 ? ((b[p + 3] << 16) | (b[p + 4] << 8) | b[p + 5]) : (ver === 4 ? syncsafe(b, p + 4) : be32(b, p + 4));
+      if (!/^[A-Z0-9]{3,4}$/.test(id) || size <= 0) break;
+      if (ID3_FRAMES.indexOf(id) >= 0 && !found[id]) found[id] = frameText(b.subarray(p + hdr, Math.min(end, p + hdr + size)));
+      p += hdr + size;
+    }
+    for (var i = 0; i < ID3_FRAMES.length; i++) { var y = yearIn(found[ID3_FRAMES[i]]); if (y) return y; }
+    return '';
+  }
+  function id3TagLength(h) { return 10 + syncsafe(h, 6) + ((h[5] & 0x10) ? 10 : 0); }
+  function id3At(file, offset) {
+    return bytes(file, offset, offset + 10).then(function (h) {
+      if (ascii(h, 0, 3) !== 'ID3') return '';
+      return bytes(file, offset, offset + Math.min(id3TagLength(h), 8 << 20)).then(id3Year);
+    });
+  }
+  function id3v1(file) {
+    if (file.size < 128) return Promise.resolve('');
+    return bytes(file, file.size - 128, file.size).then(function (b) { return ascii(b, 0, 3) === 'TAG' ? yearIn(ascii(b, 93, 4)) : ''; });
+  }
+
+  /* ---- FLAC metadata blocks ---- */
+  function flac(file, start) {
+    var o = start + 4, guard = 0;
+    function next() {
+      if (guard++ > 128 || o + 4 > file.size) return Promise.resolve('');
+      return bytes(file, o, o + 4).then(function (h) {
+        var last = h[0] & 0x80, type = h[0] & 0x7f, len = (h[1] << 16) | (h[2] << 8) | h[3], body = o + 4;
+        o = body + len;
+        if (type === 4) return bytes(file, body, body + Math.min(len, 8 << 20)).then(function (b) { return vorbisYear(b, 0); });
+        return last ? '' : next();
+      });
+    }
+    return next();
+  }
+
+  /* ---- Ogg: rebuild the first logical stream's header packets ---- */
+  function ogg(file) {
+    return bytes(file, 0, Math.min(file.size, 4 << 20)).then(function (b) {
+      var o = 0, serial = null, packets = [], parts = [], partLen = 0, pages = 0;
+      function flush() { var out = new Uint8Array(partLen), q = 0; parts.forEach(function (x) { out.set(x, q); q += x.length; }); packets.push(out); parts = []; partLen = 0; }
+      while (o + 27 <= b.length && packets.length < 12 && pages++ < 4000 && ascii(b, o, 4) === 'OggS') {
+        var segs = b[o + 26], sn = le32(b, o + 14), data = o + 27 + segs;
+        if (serial === null) serial = sn;
+        for (var i = 0; i < segs; i++) {
+          var L = b[o + 27 + i];
+          if (sn === serial) { var piece = b.subarray(data, Math.min(b.length, data + L)); parts.push(piece); partLen += piece.length; if (L < 255) flush(); }
+          data += L;
+        }
+        o = data;
+      }
+      if (parts.length) flush();                              // a comment packet cut off by the read limit
+      if (!packets.length) return '';
+      var first = packets[0];
+      if (first[0] === 0x7f && ascii(first, 1, 4) === 'FLAC') {   // FLAC in Ogg: metadata blocks follow
+        for (var k = 1; k < packets.length; k++) if ((packets[k][0] & 0x7f) === 4) return vorbisYear(packets[k], 4);
+        return '';
+      }
+      var c = packets[1];
+      if (!c) return '';
+      if (c[0] === 3 && ascii(c, 1, 6) === 'vorbis') return vorbisYear(c, 7);
+      if (ascii(c, 0, 8) === 'OpusTags') return vorbisYear(c, 8);
+      return vorbisYear(c, 0);                                // Speex
+    });
+  }
+
+  /* ---- WAV (RIFF) and AIFF chunks ---- */
+  function infoYear(b) {
+    var p = 0, f = {};
+    while (p + 8 <= b.length) { var id = ascii(b, p, 4), len = le32(b, p + 4); f[id] = ascii(b, p + 8, Math.min(len, 256)); p += 8 + len + (len & 1); }
+    return yearIn(f.ICRD) || yearIn(f.IYER) || yearIn(f.YEAR) || yearIn(f.IDIT);
+  }
+  function chunks(file, bigEndian) {
+    var o = 12, guard = 0, info = '', id3 = '';
+    function next() {
+      if (guard++ > 256 || o + 8 > file.size) return Promise.resolve(id3 || info);
+      return bytes(file, o, o + 12).then(function (h) {
+        var id = ascii(h, 0, 4), len = bigEndian ? be32(h, 4) : le32(h, 4), body = o + 8;
+        o = body + len + (len & 1);
+        if (!bigEndian && id === 'LIST' && ascii(h, 8, 4) === 'INFO') {
+          return bytes(file, body + 4, body + Math.min(len, 1 << 20)).then(function (b) { info = info || infoYear(b); return next(); });
+        }
+        if (id === 'id3 ' || id === 'ID3 ' || id === 'ID32') return id3At(file, body).then(function (y) { id3 = id3 || y; return next(); });
+        return next();
+      });
+    }
+    return next();
+  }
+
+  /* ---- MP4 / M4A: moov > udta > meta > ilst > ©day ---- */
+  function mp4(file) {
+    var o = 0, guard = 0;
+    function box(b, p) {
+      var size = be32(b, p), type = ascii(b, p + 4, 4), head = 8;
+      if (size === 1) { size = be32(b, p + 8) * 4294967296 + be32(b, p + 12); head = 16; }
+      else if (size === 0) size = b.length - p;
+      return { size: size, type: type, head: head };
+    }
+    function find(b, start, end, path) {
+      var p = start;
+      while (p + 8 <= end) {
+        var x = box(b, p); if (x.size < 8) break;
+        if (x.type === path[0]) {
+          var inner = p + x.head + (x.type === 'meta' ? 4 : 0);
+          if (path.length === 1) return { start: inner, end: Math.min(end, p + x.size) };
+          var r = find(b, inner, Math.min(end, p + x.size), path.slice(1)); if (r) return r;
+        }
+        p += x.size;
+      }
+      return null;
+    }
+    function next() {
+      if (guard++ > 64 || o + 8 > file.size) return Promise.resolve('');
+      return bytes(file, o, o + 16).then(function (h) {
+        var x = box(h, 0); if (x.size === 0) x.size = file.size - o;
+        if (x.size < 8) return '';
+        if (x.type !== 'moov') { o += x.size; return next(); }
+        return bytes(file, o, o + Math.min(x.size, 32 << 20)).then(function (b) {
+          var day = find(b, 0, b.length, ['moov', 'udta', 'meta', 'ilst', '©day']);
+          if (!day) return '';
+          var data = find(b, day.start, day.end, ['data']);
+          return data ? yearIn(text8(b.subarray(data.start + 8, data.end))) : '';
+        });
+      });
+    }
+    return next();
+  }
+
+  window.ebReadEmbeddedYear = function (file) {
+    if (!file || typeof file.slice !== 'function' || !(file.size > 12)) return Promise.resolve('');
+    return bytes(file, 0, 16).then(function (h) {
+      var magic = ascii(h, 0, 4), form = ascii(h, 8, 4);
+      if (ascii(h, 0, 3) === 'ID3') {
+        return id3At(file, 0).then(function (y) {
+          if (y) return y;
+          var after = id3TagLength(h);
+          return bytes(file, after, after + 4).then(function (m) { return ascii(m, 0, 4) === 'fLaC' ? flac(file, after) : ''; })
+            .then(function (fy) { return fy || id3v1(file); });
+        });
+      }
+      if (magic === 'fLaC') return flac(file, 0).then(function (y) { return y || id3v1(file); });
+      if (magic === 'OggS') return ogg(file);
+      if (magic === 'RIFF' && form === 'WAVE') return chunks(file, false);
+      if (magic === 'FORM' && (form === 'AIFF' || form === 'AIFC')) return chunks(file, true);
+      if (ascii(h, 4, 4) === 'ftyp') return mp4(file);
+      return id3v1(file);
+    }).catch(function (err) { try { console.warn('[Year] Could not read tags:', err); } catch (_) {} return ''; });
+  };
+})();
+</script>
 </body>
 </html>
