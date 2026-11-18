@@ -4801,7 +4801,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     </div>
 
     <div class="section" id="graphSection" style="margin-top: 16px; padding: 0; overflow: hidden; border-radius: var(--radius); position: relative; height: 200px;">
-      <canvas id="graphCanvas" style="display:block; width:100%; height:100%; background: #040201;" aria-label="Approximate tempo and elapsed beats: red integrates the approximate pulse; dashed gray uses one steady BPM; gray-brown shows local tempo over about eight beat intervals. A dotted tempo line indicates an approximate fluctuation reading. BPM values are on the left edge and Ë counts sit above the time labels. Use Track position or Jump controls to seek with a keyboard."></canvas>
+      <canvas id="graphCanvas" style="display:block; width:100%; height:100%; background: #040201;" aria-label="Red shows elapsed beats. Dashed gray counts at one steady BPM. The gray-brown line follows the local pulse. Dots mark uncertain timing. BPM values are on the left edge and Ë counts sit above the time labels. Use Track position or Jump controls to seek with a keyboard."></canvas>
       <div class="graph-title lido-font" style="position:absolute;top:10px;left:14px;font-size:13px;color:var(--accent);letter-spacing:.6px;text-transform:none;pointer-events:none;">Approx. BPM Fluctuation</div>
       <div class="graph-timing lido-font" id="graphTiming" hidden></div>
       <div class="graph-legend lido-font" style="position:absolute;top:28px;left:14px;font-size:11px;color:var(--muted);pointer-events:none;">
@@ -4815,10 +4815,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           <div class="graph-legend-popup-title">Tempo &amp; accumulated beats</div>
           <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-estimate"></span><span id="graphElapsedLegend">Red: elapsed beats (Ë) from the approximate pulse</span></div>
           <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-reference"></span>Dashed gray: elapsed beats at one steady BPM (the BPM shown)</div>
-          <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-profile"></span><span id="graphTempoLegend">Gray-brown: approximate local BPM over about eight beat intervals</span></div>
-          <div class="graph-legend-popup-hint">Swing, arpeggios and individual notes can move around a steady pulse. The local reading averages those timings while retaining slower drift, expressive rubato and section changes. Eight beats are not always two bars. Flatness alone cannot identify a click track.</div>
-          <div class="graph-legend-popup-hint">Red integrates BPM ÷ 60 over time: Ë is an approximate accumulated pulse count, not an exact annotation of every beat. Dotted tempo shows an approximate fluctuation reading; Change reports movement on that same graph. Unmetered music may have no single meaningful BPM. A listed BPM sets the displayed reference; the curve follows this recording.</div>
-          <div class="graph-legend-popup-hint">BPM values sit on the left edge; Ë counts sit above the time labels. The Change meter follows the gray-brown line. Click or tap to position; drag to scrub.</div>
+          <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-profile"></span><span id="graphTempoLegend">Gray-brown shows the local pulse in BPM</span></div>
+          <div class="graph-legend-popup-hint">The map follows the timing of several beats together. Swing and drum fills can sit over a steady pulse. Gradual changes trace a slope. A sustained switch between steady tempos can form a step.</div>
+          <div class="graph-legend-popup-hint">Dotted spans show where beat timing is uncertain. During a break, the count continues at an estimated rate. The Change meter lights after the audio supports a new rate.</div>
+          <div class="graph-legend-popup-hint">Read BPM on the left and elapsed beats above the time labels. Drag to scrub.</div>
           <div class="graph-legend-popup-hint" id="graphTimingDetail" hidden></div>
         </div>
       </details>
@@ -5475,7 +5475,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     // Playback State
     let playbackStartTime = 0;
     let pauseOffset = 0;
-    let isPlaying = false;
+    let isPlaying = false, playbackRequest = 0;
 
     let trackBpmData = null;
     let baseTrackBpmData = null;
@@ -6922,8 +6922,11 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
     // --- Core Audio & Analysis functions ---
     function initAudioCtx() {
-      if (!audioCtx) {
+      if (!audioCtx || audioCtx.state === 'closed') {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx.addEventListener('statechange', () => {
+          if (audioCtx.state === 'interrupted' && isPlaying) pauseAudio();
+        });
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 2048;
         analyser.smoothingTimeConstant = 0.82;
@@ -6968,7 +6971,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       smartIdentityLookupSerial++;
       if (albumArtObjectUrl) { URL.revokeObjectURL(albumArtObjectUrl); albumArtObjectUrl = null; }
       albumArtOnlineUrl = null;
-      updateBpmMemoryUI();
+      updateBpmUI();
 
       // FIX 1 & 2: Wrap in try/catch and provide a fallback if the CDN fails
       try {
@@ -7031,18 +7034,20 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
         initAudioCtx();
         
-        // FIX 3: Ensure AudioContext is awake before doing heavy lifting
-        if (audioCtx.state === 'suspended') {
-          await audioCtx.resume();
-        }
-
-        const ab = await file.arrayBuffer();
+        const ab = typeof file.arrayBuffer === 'function' ? await file.arrayBuffer()
+          : await new Promise((resolve,reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsArrayBuffer(file);
+            });
         
         // FIX 4: Use callback-wrapped Promise for universal WebKit/Safari compatibility
-        audioBuffer = await new Promise((resolve, reject) => {
+        const decoded = await new Promise((resolve, reject) => {
           audioCtx.decodeAudioData(ab, resolve, reject);
         });
         if (loadToken !== currentLoadToken) return;
+        audioBuffer = decoded;
 
         // Decode duration is authoritative for this exact uploaded file.
         rememberCurrentSongDuration('upload');
@@ -7058,7 +7063,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           if (loadToken !== currentLoadToken) return;
           try {
             baseTrackBpmData = analyzeTrackBPM(audioBuffer);
-            detectedBpm = baseTrackBpmData.globalBpm;
+            detectedBpm = audioEstimateBpm(baseTrackBpmData);
             // Layers 2–3: a known BPM for this identity replaces the pure
             // audio guess (octave chosen by sound); layer 4 stays otherwise.
             audioTrackBpmData = baseTrackBpmData;
@@ -7076,13 +7081,14 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         }, 50);
 
       } catch (error) {
+        if (loadToken !== currentLoadToken) return;
         console.error('Error loading file:', error);
         bpmHint.textContent = 'Error loading or decoding file';
         trackInfoEl.textContent = "Failed to load audio";
         trackInfoEl.classList.add('no-track');
       } finally {
         // FIX 5: Clear the file input so the user can re-upload the same file if needed
-        e.target.value = '';
+        if (loadToken === currentLoadToken) e.target.value = '';
       }
     });
 
@@ -7102,13 +7108,20 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     function downmixToMono(buffer) {
       const chs = buffer.numberOfChannels;
       const len = buffer.length;
+      if (chs === 1) return { data: buffer.getChannelData(0), sampleRate: buffer.sampleRate };
       const data = new Float32Array(len);
+      let strongest = null, strongestEnergy = 0;
       for (let ch = 0; ch < chs; ch++) {
         const c = buffer.getChannelData(ch);
-        for (let i = 0; i < len; i++) data[i] += c[i];
+        let energy = 0;
+        for (let i = 0; i < len; i++) { data[i] += c[i]; energy += c[i] * c[i]; }
+        if (energy > strongestEnergy) { strongest = c; strongestEnergy = energy; }
       }
       const inv = 1 / Math.max(1, chs);
-      for (let i = 0; i < len; i++) data[i] *= inv;
+      let mixEnergy = 0;
+      for (let i = 0; i < len; i++) { data[i] *= inv; mixEnergy += data[i] * data[i]; }
+      // Widely spaced or reversed stereo channels can cancel in a mono sum.
+      if (strongest && mixEnergy < .06 * strongestEnergy) data.set(strongest);
       return { data, sampleRate: buffer.sampleRate };
     }
 
@@ -7583,9 +7596,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           (d) a broad perceptual prior: flat over ~90–147 BPM, a gentle
               log-Gaussian fall-off outside it.
        4. Decimal precision from the autocorrelation peaks at 2, 4, 8 beats.
-       Known ambiguous case: half-time grooves (e.g. drum & bass whose kick
-       pattern repeats every two beats) may still read at the half tempo —
-       the ½× / 2× buttons remain for those.  */
+       Across active passages an independent bass/chord attack grid compares
+       the share of beats filled with audible attacks and the share of those
+       attacks accounted for at each metrical level. The ½× and 2× controls
+       remain available when a song supports more than one felt pulse. */
     const SMART_LOGC = 100;                                   // log-magnitude compression for the flux
     function smartOnsetBands(data, sampleRate) {
       // analyse at ~22–24 kHz
@@ -7624,6 +7638,11 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const gain = 1 / (rms * N * 0.05);
       const lin = new Float32Array(frames);           // linear-magnitude low+mid flux (strong-event timing)
       const prevM = new Float64Array(K);
+      const body = new Float32Array(frames);
+      const bodyWeight = Float64Array.from({length: K}, (_,k) => {
+        const hz = k * sr / N;
+        return hz < 38 || hz > 1800 ? 0 : 1 / (1 + (hz/720) ** 2);
+      });
       for (let f = 0; f < frames; f++) {
         const o = f * hop;
         for (let i = 0; i < N; i++) { const j = rev[i]; re[j] = x[o + i] * win[i]; im[j] = 0; }
@@ -7636,11 +7655,15 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           }
         }
         const acc = [0, 0, 0];
-        let linF = 0;
+        let linF = 0, bodyPower = 0;
         for (let k = 1; k < K; k++) {
           const bnd = bandOf[k];
           const m = Math.sqrt(re[k] * re[k] + im[k] * im[k]) * gain;
-          if (bnd === 0 || bnd === 1) { const dm = m - prevM[k]; if (dm > 0) linF += dm; }
+          if (bnd === 0 || bnd === 1) {
+            const rise = Math.max(0, m - prevM[k]);
+            linF += rise;
+            bodyPower += bodyWeight[k] * rise * rise;
+          }
           prevM[k] = m;
           const l = Math.log1p(SMART_LOGC * m);
           if (bnd >= 0) { const d = l - prev[k]; if (d > 0) acc[bnd] += d; }
@@ -7648,6 +7671,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         }
         for (let b = 0; b < 3; b++) raw[b][f] = acc[b] / Math.max(1, cnt[b]);
         lin[f] = linF;
+        body[f] = Math.sqrt(bodyPower);
       }
       // adaptive floor + per-band normalisation
       const radius = Math.max(2, Math.round(rate * 0.25));
@@ -7676,7 +7700,11 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       }
       const edgeFrames = Math.min(Math.round(rate * 0.2), Math.floor(frames / 4));
       const transientActivity = quantile(lin.subarray(edgeFrames, Math.max(edgeFrames, frames - edgeFrames)), 0.99);
-      return { combined, lin, bands, bandStrengths, transientActivity, rate, t0: (N / 2) / sr };
+      // Frequency-band normalization can make every hi-hat as prominent as a
+      // kick. Keep some low/mid attack emphasis when following the local pulse.
+      const strength = quantile(lin, 0.98) || 1;
+      const pulse = combined.map((v, i) => 0.65 * v + 1.3 * Math.min(2, Math.sqrt(lin[i] / strength)));
+      return { combined, pulse, lin, body, bands, bandStrengths, transientActivity, rate, t0: (N / 2) / sr };
     }
 
     // Median spacing (s) of the strong low+mid "rhythm" events — kicks,
@@ -7841,6 +7869,75 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       }
       return tried ? clamp(best / DA.longMax, 0, 1) : NaN;
     }
+    // A second view of the pulse uses the timing of low and pitched attacks.
+    // A hi-hat can have a sharp broadband onset without a matching bass/chord
+    // attack. Separating those cues is especially important around 90 vs 180.
+    function meterWindows(onset, segments) {
+      const windows = [], intervalVotes = new Map();
+      const rate = onset.rate, body = onset.body;
+      const separation = Math.max(2, Math.round(.085 * rate));
+      for (const [start, end] of segments) {
+        const peaks = [];
+        for (let i = start + 1; i < end - 1; i++) {
+          if (!(body[i] > body[i - 1] && body[i] >= body[i + 1])) continue;
+          const prev = peaks[peaks.length - 1];
+          if (prev && i - prev.t < separation) {
+            if (body[i] > prev.a) { prev.t = i; prev.a = body[i]; }
+          } else peaks.push({ t: i, a: body[i] });
+        }
+        const scale = quantile(peaks.map(p => p.a), .87);
+        if (!(scale > .025) || peaks.length < 4) continue;
+        const events = peaks.map(p => ({ t: p.t, w: clamp((p.a / scale - .12) / .72, 0, 1) }))
+          .filter(p => p.w > .06);
+        if (events.length < 4) continue;
+        windows.push({ start, end, events });
+        const strong = events.filter(p => p.w >= .43);
+        const local = new Map();
+        for (let i = 1; i < strong.length; i++) {
+          const bpm = 60 * rate / (strong[i].t - strong[i-1].t);
+          if (bpm < 38 || bpm > 315) continue;
+          const bin = Math.round(36 * Math.log2(bpm / 40));
+          local.set(bin, (local.get(bin) || 0) + Math.min(strong[i].w, strong[i-1].w));
+        }
+        const votes = Array.from(local.values()).reduce((sum, v) => sum + v, 0);
+        for (const [bin, count] of local) intervalVotes.set(bin, (intervalVotes.get(bin) || 0) + count / votes);
+      }
+      const tempos = Array.from(intervalVotes).sort((a,b) => b[1] - a[1]).slice(0,4)
+        .map(([bin]) => 40 * Math.pow(2, bin / 36));
+      return { windows, tempos };
+    }
+
+    // Jointly reward audible attacks on expected beats and the share of those
+    // attacks explained by this grid. Doubling leaves alternate cells empty.
+    // Halving omits regularly recurring attacks between the proposed beats.
+    function meterGridFit(win, period, rate) {
+      if ((win.end-win.start) / period < 5) return NaN;
+      const bins = 32, phases = new Float64Array(bins);
+      const radius = Math.max(1, Math.round(bins * Math.min(.14, .052 * rate / period)));
+      for (const p of win.events) {
+        const b = Math.round(bins * ((p.t-win.start) % period) / period) % bins;
+        for (let d = -radius; d <= radius; d++) phases[(b + d + bins) % bins] += p.w * (1 - Math.abs(d)/(radius+1));
+      }
+      let best = 0;
+      for (let b = 1; b < bins; b++) if (phases[b] > phases[best]) best = b;
+      const first = win.start + best * period/bins;
+      const occupied = new Float32Array(Math.floor((win.end - 1 - first)/period) + 1);
+      const tolerance = Math.min(.15 * period, .058 * rate);
+      let all = 0, matched = 0;
+      for (const p of win.events) {
+        const cell = Math.round((p.t-first)/period);
+        if (cell < 0 || cell >= occupied.length) continue;
+        all += p.w;
+        if (Math.abs(p.t-first-cell*period) <= tolerance) {
+          matched += p.w;
+          occupied[cell] = Math.max(occupied[cell],p.w);
+        }
+      }
+      const coverage = occupied.reduce((sum,w) => sum+w,0) / Math.max(1,occupied.length);
+      const recall = matched/Math.max(.001,all);
+      return 2 * coverage * recall / Math.max(.001,coverage + recall);
+    }
+
     const SMART_W_BB = 1.6, SMART_W_BAR = 1.2, SMART_W_HT = 0.8;
 
     // Tunables for the octave decision (see the notes above).
@@ -7850,14 +7947,20 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const O = smartOnsetBands(data, sampleRate);
       const env = O.combined, rate = O.rate, n = env.length;
       if (n < rate * 4) return null;
-      const minBpm = 40, maxBpm = 250;
+      const minBpm = 40, maxBpm = 300;
       const minLag = Math.floor(rate * 60 / maxBpm);
       const maxLag = Math.ceil(rate * 60 / minBpm);
       const refineLag = Math.min(Math.ceil(maxLag * 4.2), Math.floor(n * 0.6));
       // segments: 12 s windows, 50 % overlap (or the whole song if short)
       const segLen = Math.round(rate * 12), segs = [];
       if (n < segLen * 1.5) segs.push([0, n]);
-      else for (let s = 0; s + segLen <= n; s += Math.round(segLen / 2)) segs.push([s, s + segLen]);
+      else {
+        const count = Math.min(36, 1 + Math.ceil((n - segLen) / (segLen / 2)));
+        for (let i = 0; i < count; i++) {
+          const start = Math.round(i * (n-segLen) / (count-1));
+          segs.push([start, start + segLen]);
+        }
+      }
       const acs = segs.map(([s, e]) => smartAutocorr(env, s, e, Math.min(refineLag, e - s - 17))).filter(Boolean);
       if (!acs.length) return null;
       const L = refineLag;
@@ -7889,12 +7992,23 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const T0 = 60 * rate / peakAt(best).lag;
       // candidate set: metrical relatives of the strongest period + other strong peaks
       const cands = new Map();
-      const addCand = (bpm) => { if (bpm >= 50 && bpm <= 215) cands.set(Math.round(bpm * 4), bpm); };
+      const addCand = (bpm) => { if (bpm >= minBpm * .99 && bpm <= maxBpm * 1.01) cands.set(Math.round(bpm * 4), clamp(bpm,minBpm,maxBpm)); };
       [1 / 4, 1 / 3, 1 / 2, 2 / 3, 1, 3 / 2, 2, 3, 4].forEach((r) => addCand(T0 * r));
       const peaks = [];
       for (let lag = minLag + 1; lag < maxLag; lag++) if (ac[lag] > ac[lag - 1] && ac[lag] >= ac[lag + 1] && ac[lag] > bestV * 0.6) peaks.push(lag);
       peaks.forEach((lag) => { const b = 60 * rate / lag; addCand(b); addCand(b * 2); addCand(b / 2); });
 
+      const meter = meterWindows(O, segs);
+      for (const tempo of meter.tempos) { addCand(tempo); addCand(tempo/2); addCand(tempo*2); }
+      const meterCache = new Map();
+      function levelFits(period) {
+        const key = Math.round(period * 20);
+        if (!meterCache.has(key)) {
+          meterCache.set(key, meter.windows.map(w => Math.max(...[.98,1,1.02].map(
+            drift => meterGridFit(w, period * drift, rate)))));
+        }
+        return meterCache.get(key);
+      }
       const ioi = smartStrongIOI(O.lin, rate);
       // No cymbals or snare rattle (strummed / piano songs): the beat is
       // carried by accents alone, so off-beat notes must be clearly as strong
@@ -7923,7 +8037,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         if (isFinite(bb) && bb > 0.25) rangePenalty = Math.min(rangePenalty, 0.25);
         let score = SMART_W_EVID * Math.log(Math.min(1.2, Math.max(0.02, evid))) - rangePenalty;
         if (isFinite(acc)) score -= SMART_W_ACC * Math.max(0, accFloor - acc);       // its "beats" are subdivisions → too fast
-        if (isFinite(sub) && bpm * 2 <= 215) score -= SMART_W_SUB * Math.max(0, sub - 0.6); // full beats between beats → too slow
+        if (isFinite(sub) && bpm * 2 <= maxBpm) score -= SMART_W_SUB * Math.max(0, sub - 0.6); // full beats between beats → too slow
         // never beat faster than the song's strong events actually move
         if (isFinite(ioi)) { const r = (60 / bpm) / ioi; if (r < 0.8) score -= SMART_W_IOI * Math.log2(0.8 / r); }
         if (isFinite(bb) && bb > 0) score += SMART_W_BB * bb;
@@ -7931,7 +8045,23 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         if (isFinite(ht) && ht > 0) score += SMART_W_HT * ht;
         const barFit = smartBarFit(DA, pk.lag);                  // kicks/snares repeat every 2–8 beats
         if (isFinite(barFit)) score -= SMART_W_BAR * Math.max(0, 0.7 - barFit) / 0.7;
-        return { bpm, P: pk.lag, evid, acc, sub, bb, ht, barFit, score };
+        let gridEvidence = 0;
+        if (!forced && meter.windows.length) {
+          const fit = levelFits(pk.lag);
+          const faster = bpm * 2 <= maxBpm * 1.01 ? levelFits(pk.lag/2) : [];
+          const slower = bpm / 2 >= minBpm * .99 ? levelFits(pk.lag*2) : [];
+          const differences = [];
+          for (let i = 0; i < fit.length; i++) {
+            if (!Number.isFinite(fit[i])) continue;
+            const rival = Math.max(faster[i] || 0, slower[i] || 0);
+            if (Math.max(fit[i],rival) >= .52 && rival > 0) differences.push(fit[i] - rival);
+          }
+          if (differences.length) {
+            gridEvidence = median(differences) * Math.min(1,differences.length/Math.max(1,meter.windows.length*.55));
+            score += 10 * gridEvidence;
+          }
+        }
+        return { bpm, P: pk.lag, evid, acc, sub, bb, ht, barFit, meter: gridEvidence, score };
       };
       // precision: the peaks at 2, 4, 8 beats pin the period down further
       const refineBpm = (win) => {
@@ -7954,7 +8084,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const win = scored[0];
 
       const bpm = refineBpm(win);
-      const second = scored.length > 1 ? scored[1].score : win.score - 3;
+      const distinct = scored.find(c => Math.abs(Math.log2(c.P/win.P)) > .065);
+      const second = distinct ? distinct.score : win.score - 3;
       const confidence = clamp(0.45 * clamp(bestV / 0.35, 0, 1) + 0.55 * clamp((win.score - second) / 1.5, 0, 1), 0, 1);
       // evaluate([K/2, K, 2K], bias): score ONLY the given known-BPM octaves
       // with the same evidence. `bias` (per candidate) lets the known value
@@ -8003,7 +8134,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       // Stay on the metrical octave selected by the whole-track estimator while
       // still allowing genuine accelerando/ritardando and section-level changes.
       const minBpm = Math.max(30, globalBpm * 0.50);
-      const maxBpm = Math.min(300, globalBpm * 1.40);
+      const maxBpm = Math.min(300, globalBpm * 1.85);
       const step = 0.5;
       const states = [];
       for (let b = minBpm; b <= maxBpm + 1e-9; b += step) states.push(b);
@@ -8073,11 +8204,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const S = states.length, T = centers.length;
       let prev = new Float64Array(S);
       const backs = Array.from({ length: T }, () => new Int16Array(S));
-      const octavePenalty = states.map(b => 2.5 * Math.max(0, Math.abs(Math.log2(b / globalBpm)) - 0.30));
+      // The reference resolves metrical ties. A persistent, strongly accented
+      // section may move substantially in either direction.
+      const octavePenalty = states.map(b => 0.60 * Math.pow(Math.log2(b / globalBpm), 2));
 
       for (let j = 0; j < S; j++) {
         const octaveDistance = Math.log2(states[j] / globalBpm);
-        const startPrior = -0.5 * Math.pow(octaveDistance / 0.12, 2);
+        const startPrior = -0.5 * Math.pow(octaveDistance / 0.25, 2);
         const w = 0.18 + 2.45 * confidences[0];
         prev[j] = obsRows[0][j] * w + startPrior - octavePenalty[j];
         backs[0][j] = -1;
@@ -8087,24 +8220,27 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       // frame-to-frame jumps require strong, sustained evidence.
       const TRANSITION_LAMBDA = 26;
       const logStates = states.map(b => Math.log2(b));
-      const transitions = new Float64Array(S * S);
-      for (let j = 0; j < S; j++) for (let k = 0; k < S; k++) {
-        const d = logStates[j] - logStates[k];
-        transitions[j * S + k] = TRANSITION_LAMBDA * d * d;
-      }
       for (let t = 1; t < T; t++) {
-        const cur = new Float64Array(S);
+        const cur = new Float64Array(S), back = backs[t];
         const w = 0.15 + 2.55 * confidences[t];
-        for (let j = 0; j < S; j++) {
-          let best = -Infinity, bestK = 0;
-          const row = j * S;
-          for (let k = 0; k < S; k++) {
-            const score = prev[k] - transitions[row + k];
+        // With a squared distance on an ordered log-tempo axis, optimal
+        // predecessor indices are monotone. Search the exact wider grid
+        // without comparing every pair of tempo states.
+        function solve(lo, hi, first, last) {
+          if (lo > hi) return;
+          const j = (lo + hi) >> 1;
+          let best = -Infinity, bestK = first;
+          for (let k = first; k <= last; k++) {
+            const distance = logStates[j] - logStates[k];
+            const score = prev[k] - TRANSITION_LAMBDA * distance * distance;
             if (score > best) { best = score; bestK = k; }
           }
           cur[j] = best + obsRows[t][j] * w - octavePenalty[j];
-          backs[t][j] = bestK;
+          back[j] = bestK;
+          solve(lo, j - 1, first, bestK);
+          solve(j + 1, hi, bestK, last);
         }
+        solve(0, S - 1, 0, S - 1);
         prev = cur;
       }
 
@@ -8117,17 +8253,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
       // Low-confidence gaps (breakdowns, intros, sparse bridges) should retain
       // the surrounding pulse, not invent a tempo change from missing drums.
-      for (let i = 0; i < bpms.length; i++) {
-        if (confidences[i] >= 0.45) continue;
-        let left = i - 1, right = i + 1;
-        while (left >= 0 && confidences[left] < 0.45) left--;
-        while (right < bpms.length && confidences[right] < 0.45) right++;
-        if (left >= 0 && right < bpms.length) {
-          const f = (i - left) / (right - left);
-          bpms[i] = bpms[left] + (bpms[right] - bpms[left]) * f;
-        } else if (left >= 0) bpms[i] = bpms[left];
-        else if (right < bpms.length) bpms[i] = bpms[right];
-        else bpms[i] = globalBpm;
+      for (let i = 0; i < bpms.length;) {
+        if (confidences[i] >= 0.45) { i++; continue; }
+        const first = i;
+        while (i < bpms.length && confidences[i] < 0.45) i++;
+        const left = first > 0 ? bpms[first - 1] : i < bpms.length ? bpms[i] : globalBpm;
+        const right = i < bpms.length ? bpms[i] : left;
+        for (let j = first; j < i; j++) bpms[j] = left + (right - left) * (j - first + 1) / (i - first + 1);
       }
 
       // Reject one-hop outliers, then apply a very light smoother. Sustained
@@ -8144,7 +8276,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
       // If the surviving motion is below a realistic detection floor, show the
       // track as steady instead of turning numerical jitter into musical drift.
-      const devs = bpms.map(v => Math.abs(v - median(bpms)));
+      const centerBpm = median(bpms);
+      const devs = bpms.map(v => Math.abs(v - centerBpm));
       const robustDev = quantile(devs, 0.90);
       const driftFloor = Math.max(0.18, globalBpm * 0.0015);
       if (!(robustDev > driftFloor)) bpms = bpms.map(() => globalBpm);
@@ -8152,20 +8285,17 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       return { centers, bpms, confidences };
     }
 
-    /* Local pulse estimator informed by measured music research:
-       Carter & von Appen (2025), Sogorski et al. (2018), and
-       Schreiber et al. (2020). These studies motivate separating note
-       microtiming from slower tempo movement; their genre/corpus ranges
-       are not priors or caps for an individual recording.
-       An eight-interval, meter-independent local regression estimates
-       beat period directly. A steady observed grid is not proof of a
-       sequencer. The integral gives estimated elapsed pulse, not an exact
-       integer beat annotation. Historical rubato descriptions are context,
-       not numeric ground truth. */
-    const BEATMAP_TIGHTNESS = 100;        // Ellis 2007 / librosa default
-    const BEATMAP_FIT_HALF = 4;           // local pulse over up to 8 beat intervals; meter-agnostic
-    const BEATMAP_GRID_MIN = 64;          // require 64 tracked beats for a steady run
-    const BEATMAP_GRID_SAME = 0.0015;     // two grids are the same tempo within 0.15 %
+    /* A local tempo map can contain quiet drift, brief rubato, and small or
+       large changes between sections. Carter & von Appen (2025), Intégral 38:
+       https://theory.esm.rochester.edu/integral/38-2025/carter-von-appen/
+       For the distinction between microtiming and longer-term pulse see
+       Sogorski et al. (2018): https://doi.org/10.1371/journal.pone.0186361
+       The support gates and fit lengths below are engineering choices. */
+    const BEATMAP_TIGHTNESS = 100;
+    const BEATMAP_SHORT_HALF = 3, BEATMAP_LONG_HALF = 7;
+    const BEATMAP_GRID_MIN = 24;
+    const BEATMAP_GRID_SAME = 0.0015;
+    const TEMPO_SUPPORT_MIN = 0.35;
 
     // Guide period (frames per beat) from local periodicity.
     function beatmapGuidePeriods(n, rate, t0, guide, globalBpm) {
@@ -8234,12 +8364,15 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         if (first && ls[i] < thresh) back[i] = -1;
         else { back[i] = loc; first = false; }
       }
-      const maxima = [];
-      for (let i = 1; i < n - 1; i++) if (cum[i] > cum[i - 1] && cum[i] >= cum[i + 1]) maxima.push(i);
-      if (!maxima.length) return null;
-      const medMax = median(maxima.map(i => cum[i]));
-      let last = maxima[maxima.length - 1];
-      for (let k = maxima.length - 1; k >= 0; k--) if (2 * cum[maxima[k]] > medMax) { last = maxima[k]; break; }
+      // Backtrack from the best complete path ending on audible evidence.
+      // The last local maximum can be a swung subdivision: forcing the path
+      // to finish there pulls several otherwise steady beats out of phase.
+      let last = -1;
+      for (let i = 1; i + 1 < n; i++) {
+        if (ls[i] < thresh || ls[i] < ls[i - 1] || ls[i] < ls[i + 1]) continue;
+        if (last < 0 || cum[i] > cum[last]) last = i;
+      }
+      if (last < 0) return null;
       const frames = [];
       for (let i = last; i >= 0; i = back[i]) frames.push(i);
       frames.reverse();
@@ -8337,6 +8470,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const tSpan = t0 + kept[kept.length - 1] / rate;
       const guided = beats.slice(s0).filter(b => b.t <= tSpan + 0.05).map(b => b.sal);
       if (!guided.length || median(kept.map(i => ls[i])) < 1.05 * median(guided)) return beats;
+      const tailPeriods = kept.slice(1).map((f, i) => (f - kept[i]) / rate);
+      if (median(tailPeriods.slice(-4)) < 1.06 * median(ib)) return beats;
+      if (tSpan < tEnd - 1.25 * median(tailPeriods.slice(-4))) return beats;
       return beats.slice(0, s0).concat(beatmapRefine(kept, ls, rate, t0));
     }
 
@@ -8344,13 +8480,16 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     // (hi-hats, bass pushes) to keep its period. Such a beat is far weaker
     // than both neighbours while the neighbours sit one slowed beat apart
     // (not two normal beats — a half-time feel is left alone); it is dropped.
-    function beatmapDropSwitched(beats, pMed) {
+    function beatmapDropSwitched(beats, pMed, guide) {
       const out = [];
       for (let k = 0; k < beats.length; k++) {
         const a = beats[k - 1], b = beats[k], c = beats[k + 1];
         if (a && c && !b.filled && out.length && out[out.length - 1] === a
             && b.sal < 0.35 * Math.min(a.sal, c.sal)
-            && c.t - a.t >= 1.05 * pMed && c.t - a.t <= 1.75 * pMed) continue;
+            && c.t - a.t >= 1.05 * pMed && c.t - a.t <= 1.75 * pMed) {
+          const guided = guide && guide.centers.length ? 60 / sampleTrackSeries(b.t, guide.centers, guide.bpms) : pMed;
+          if (guided > 1.1 * pMed && Math.abs((c.t - a.t) / guided - 1) < 0.18) continue;
+        }
         out.push(b);
       }
       return out;
@@ -8491,52 +8630,6 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       return runs;
     }
 
-    // Two runs on the same grid (same tempo, beats line up across the gap)
-    // are one click that kept running through a breakdown or fermata; the
-    // gap's beats are re-counted from the grid itself.
-    function beatmapMergeRuns(beats, runs, tolR, tolS) {
-      if (runs.length < 2) return { beats, runs };
-      const segs = [];
-      let cur = 0;
-      runs.forEach(r => {
-        if (r.i0 > cur) segs.push({ run: false, beats: beats.slice(cur, r.i0) });
-        segs.push({ run: true, beats: beats.slice(r.i0, r.i1 + 1), a: r.a, p: r.p });
-        cur = r.i1 + 1;
-      });
-      if (cur < beats.length) segs.push({ run: false, beats: beats.slice(cur) });
-      const join = (A, B) => {
-        if (Math.abs(A.p / B.p - 1) > BEATMAP_GRID_SAME) return null;
-        const nA = A.beats.length, nB = B.beats.length;
-        const p = (A.p * nA + B.p * nB) / (nA + nB);
-        const gap = B.beats[0].t - A.beats[nA - 1].t, m = Math.round(gap / p);
-        if (m < 1 || Math.abs(gap / p - m) > 0.25) return null;
-        const ts = [], gs = [], us = [];
-        A.beats.forEach((b, k) => { ts.push(b.t); gs.push(k); us.push(b.w >= 0.35); });
-        B.beats.forEach((b, k) => { ts.push(b.t); gs.push(nA - 1 + m + k); us.push(b.w >= 0.35); });
-        const fit = beatmapGridTest(ts, gs, us, 0, ts.length - 1, tolR * 1.35, tolS * 1.35);
-        if (!fit) return null;
-        const out = A.beats.slice();
-        for (let g = nA; g < nA - 1 + m; g++) out.push({ t: fit.a + fit.p * g, sal: 0, w: 0.15, filled: true });
-        B.beats.forEach(b => out.push(b));
-        return { run: true, beats: out, a: fit.a, p: fit.p };
-      };
-      for (let i = 0; i < segs.length; i++) {
-        if (!segs[i].run) continue;
-        let j = i + 1;
-        if (j < segs.length && !segs[j].run) j++;
-        if (j >= segs.length || !segs[j].run) continue;
-        const merged = join(segs[i], segs[j]);
-        if (merged) { segs.splice(i, j - i + 1, merged); i--; }
-      }
-      const outBeats = [], outRuns = [];
-      segs.forEach(s => {
-        const i0 = outBeats.length;
-        s.beats.forEach(b => outBeats.push(b));
-        if (s.run) outRuns.push({ i0, i1: outBeats.length - 1, a: s.a, p: s.p });
-      });
-      return { beats: outBeats, runs: outRuns };
-    }
-
     // Close the gaps between locked runs: loose run ends are released, then
     // beats that sit on a neighbouring run's grid join it, split where the two
     // grids meet, so a programmed tempo step is drawn as a clean step. Outer
@@ -8554,15 +8647,17 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       for (let q = 0; q + 1 < runs.length; q++) {
         const A = runs[q], B = runs[q + 1], g0 = A.i1 + 1, g1 = B.i0 - 1;
         if (g1 < g0) continue;
-        let bestS = -1, bestCost = Infinity, bestMax = Infinity;
-        for (let s = g0; s <= g1 + 1; s++) {
-          let cost = 0, mx = 0;
-          for (let k = g0; k <= g1; k++) {
-            const r = times[k] - (k < s ? line(A, k) : line(B, k));
-            cost += r * r; if (Math.abs(r) > mx) mx = Math.abs(r);
-          }
-          if (cost < bestCost) { bestCost = cost; bestS = s; bestMax = mx; }
+        // Moving the split by one beat changes only one squared residual.
+        let cost = 0;
+        for (let k = g0; k <= g1; k++) cost += Math.pow(times[k] - line(B, k), 2);
+        let bestS = g0, bestCost = cost;
+        for (let k = g0; k <= g1; k++) {
+          cost += Math.pow(times[k] - line(A, k), 2) - Math.pow(times[k] - line(B, k), 2);
+          if (cost < bestCost) { bestCost = cost; bestS = k + 1; }
         }
+        let bestMax = 0;
+        for (let k = g0; k <= g1; k++)
+          bestMax = Math.max(bestMax, Math.abs(times[k] - line(k < bestS ? A : B, k)));
         if (bestMax <= 1.5 * tolR) {
           const shift = B.i0 - bestS;
           A.i1 = bestS - 1; B.a -= B.p * shift; B.i0 = bestS;
@@ -8571,6 +8666,85 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           while (B.i0 - 1 > A.i1 && Math.abs(times[B.i0 - 1] - line(B, B.i0 - 1)) <= tolR) { B.a -= B.p; B.i0--; }
         }
       }
+    }
+
+    // Compare complete multi-beat spans on either side of a candidate boundary.
+    // A sharp join has a larger contrast right at the join than a smooth ramp
+    // does. Repeated backbeat offsets largely cancel in these span estimates.
+    function beatmapSectionSteps(times, weights) {
+      const n = times.length, scores = new Float64Array(n), steps = new Uint8Array(n);
+      for (let k = 8; k + 8 < n; k++) {
+        const left = [], right = [];
+        for (let j = 0; j <= 4; j++) {
+          const i = k - 8 + j, h = k + j;
+          if (Math.min(weights[i], weights[i + 4], weights[h], weights[h + 4]) < 0.35) continue;
+          left.push((times[i + 4] - times[i]) / 4);
+          right.push((times[h + 4] - times[h]) / 4);
+        }
+        if (left.length < 4 || weights[k] < 0.35) continue;
+        const pl = median(left), pr = median(right), delta = pr - pl;
+        const spread = Math.max(quantile(left, 0.9) - quantile(left, 0.1),
+          quantile(right, 0.9) - quantile(right, 0.1));
+        const near = (times[k + 4] - 2 * times[k] + times[k - 4]) / 4;
+        if (Math.abs(delta) < Math.max(0.009 * Math.min(pl, pr), 2.4 * spread)
+            || near * Math.sign(delta) < 0.76 * Math.abs(delta)) continue;
+        scores[k] = (Math.min(Math.abs(near), Math.abs(delta)) - spread) / Math.min(pl, pr);
+      }
+      for (let k = 8; k + 8 < n; k++) {
+        if (!scores[k]) continue;
+        let best = k;
+        for (let j = k - 5; j <= k + 5; j++) {
+          if (scores[j] > scores[best] || (scores[j] === scores[best] && j < best)) best = j;
+        }
+        if (best === k) steps[k] = 1;
+      }
+      return steps;
+    }
+
+    // Short fits retain supported phrase motion. Longer fits absorb alternating
+    // early/late hits when multi-beat timing stays consistent.
+    function beatmapAdaptiveFit(times, weights, sections) {
+      const short = beatmapLocalFit(times, weights, BEATMAP_SHORT_HALF, sections);
+      const wide = beatmapLocalFit(times, weights, BEATMAP_LONG_HALF, sections);
+      for (let k = 0; k < times.length; k++) {
+        const lo = Math.max(0, k - BEATMAP_LONG_HALF), hi = Math.min(times.length - 1, k + BEATMAP_LONG_HALF);
+        const spans = [], offsets = [];
+        for (let j = lo; j <= hi; j++) {
+          if (sections[j] !== sections[k] || weights[j] < 0.35) continue;
+          if (j + 4 <= hi && sections[j + 4] === sections[k] && weights[j + 4] >= 0.35)
+            spans.push((times[j + 4] - times[j]) / 4);
+          if (j > lo && j < hi && sections[j - 1] === sections[k] && sections[j + 1] === sections[k])
+            offsets.push(Math.abs(times[j + 1] - 2 * times[j] + times[j - 1]));
+        }
+        const p = wide.periods[k];
+        if (!(p > 0) || !(short.periods[k] > 0) || spans.length < 3) continue;
+        const noise = Math.max(0.002 * p, 0.25 * (median(offsets) || 0));
+        const motion = quantile(spans, 0.85) - quantile(spans, 0.15);
+        const useShort = clamp((motion - noise) / Math.max(0.006 * p, noise), 0, 1);
+        for (const field of ['periods', 'pulseTimes', 'residuals'])
+          short[field][k] = wide[field][k] + useShort * (short[field][k] - wide[field][k]);
+      }
+      return short;
+    }
+
+    // Between supported observations keep counting at the last established
+    // rate. Only interpolate across a single missed beat. Through longer gaps
+    // a change of rate takes effect when the pulse is heard again.
+    function beatmapFillGaps(times, bpms, confidences, reference) {
+      let previous = -1;
+      for (let i = 0; i < bpms.length; i++) {
+        if (confidences[i] < TEMPO_SUPPORT_MIN || !(bpms[i] > 0)) continue;
+        for (let j = previous + 1; j < i; j++) {
+          if (previous < 0) bpms[j] = bpms[i];
+          else if (i === previous + 2 && times[i] - times[previous] < 2.8 * 60 / bpms[previous]) {
+            const f = (times[j] - times[previous]) / (times[i] - times[previous]);
+            bpms[j] = bpms[previous] + f * (bpms[i] - bpms[previous]);
+          } else bpms[j] = bpms[previous];
+        }
+        previous = i;
+      }
+      for (let j = previous + 1; j < bpms.length; j++) bpms[j] = previous >= 0 ? bpms[previous] : reference;
+      return previous >= 0;
     }
 
     // Beats → tempo nodes. A failed map falls back to a provisional profile.
@@ -8587,19 +8761,41 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       beats = beatmapFollowTail(beats, ls, rate, t0);
       const ibi0 = [];
       for (let k = 1; k < beats.length; k++) ibi0.push(beats[k].t - beats[k - 1].t);
-      beats = beatmapDropSwitched(beats, median(ibi0));
+      beats = beatmapDropSwitched(beats, median(ibi0), guide);
       if (beats.length < 16) return null;
 
       // Salience → fit weight (beats inside a breakdown count for less).
       const medSal = median(beats.filter(b => !b.filled).map(b => b.sal)) || 1;
       beats.forEach(b => { b.w = clamp(b.sal / medSal, 0.15, 1.5); });
+      // A lone pickup or final offbeat cannot establish a new tempo. An
+      // ongoing ritardando is retained when its last interval fits its trend.
+      for (const atEnd of [false, true]) {
+        const edge = atEnd ? beats.slice(-7).reverse() : beats.slice(0, 7);
+        const gaps = edge.slice(1).map((b, i) => Math.abs(b.t - edge[i].t));
+        const inner = gaps.slice(1);
+        const trend = median(inner.slice(1).map((v, i) => inner[i] - v));
+        const expected = median(inner.slice(0, 3)) + 2 * trend;
+        const spread = median(inner.map(v => Math.abs(v - median(inner))));
+        if (Math.abs(gaps[0] - expected) > Math.max(0.17 * expected, 4 * spread)) {
+          if (atEnd) beats.pop(); else beats.shift();
+        }
+      }
       const raw = beats.map(b => b.t);
       const ibis = [];
       for (let k = 1; k < raw.length; k++) ibis.push(raw[k] - raw[k - 1]);
       const pMed = median(ibis);
       // the tracker works on the guide's metrical level; this only rejects a
       // beat list that has lost it (sections may differ from the average)
-      if (!(pMed > 0) || Math.abs(60 / pMed / globalBpm - 1) > 0.25) return null;
+      if (!(pMed > 0)) return null;
+      if (Math.abs(60 / pMed / globalBpm - 1) > 0.25) {
+        const agreement = [];
+        for (let k = 0; k < ibis.length; k++) {
+          if (Math.min(beats[k].w, beats[k + 1].w) < TEMPO_SUPPORT_MIN) continue;
+          const local = guide && guide.centers.length ? sampleTrackSeries(raw[k], guide.centers, guide.bpms) : globalBpm;
+          agreement.push(Math.abs(Math.log2(ibis[k] * local / 60)));
+        }
+        if (agreement.length < 8 || median(agreement) > Math.log2(1.25)) return null;
+      }
       const jitter = beatJitterSec(raw);
       if (!isFinite(jitter)) return null;
       const relJitter = jitter / pMed;
@@ -8617,15 +8813,14 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       // fit a permissive grid. Only a much tighter repeatable pulse is snapped.
       const tolR = clamp(2.5 * jitter, 0.002, 0.008);
       const tolS = clamp(2.83 * beatmapBarNoise(raw), 0.001, 0.003);
-      const found = beatmapFindRuns(raw, raw.map((_, k) => k), beats.map(b => b.w >= 0.35), tolR, tolS, BEATMAP_GRID_MIN);
-      const merged = beatmapMergeRuns(beats, found, tolR, tolS);
-      beats = merged.beats;
-      const runs = merged.runs;
+      const runs = beatmapFindRuns(raw, raw.map((_, k) => k), beats.map(b => b.w >= 0.35), tolR, tolS, BEATMAP_GRID_MIN);
       const N = beats.length;
       const times = beats.map(b => b.t), weights = beats.map(b => b.w);
       beatmapCloseGaps(times, runs, tolR);
       let gridBeats = 0;
-      runs.forEach(r => { gridBeats += r.i1 - r.i0 + 1; });
+      for (const run of runs) {
+        for (let k = run.i0; k <= run.i1; k++) if (weights[k] >= TEMPO_SUPPORT_MIN) gridBeats++;
+      }
       const gridShare = gridBeats / N;
       const groups = [];
       runs.forEach((r, order) => {
@@ -8636,8 +8831,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       });
       // Classify observed geometry only. A musician, click, loop or edited
       // master may all produce a steady grid; audio timing cannot prove which.
-      const domN = groups.reduce((m, g) => Math.max(m, g.n), 0);
-      let kind = gridShare >= 0.5 && domN >= 0.5 * gridBeats ? (gridShare >= 0.85 ? 'grid' : 'hybrid') : 'human';
+      let kind = gridShare >= 0.85 ? 'grid' : gridShare >= 0.4 ? 'hybrid' : 'human';
       // A regular DP path can be imposed on random noise. Require actual
       // periodic evidence as well as locally salient beats. Tiny steady-tone
       // FFT variations must not become a pulse after per-band normalisation.
@@ -8645,23 +8839,12 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       if (relJitter > 0.12 || conf < 0.15 || (salRatio < 1.3 && conf < 0.35)
           || (Number.isFinite(onsetActivity) && onsetActivity < 0.025)) kind = 'none';
 
-      // Smoothed pulse: up to eight beat intervals; tight runs fit to their line.
+      // Fit the pulse independently on either side of a supported tempo step.
       let S = null, localFit = null;
-      const phaseBreaks = new Uint8Array(N);
+      const phaseBreaks = new Uint8Array(N), sectionSteps = beatmapSectionSteps(times, weights);
       if (kind !== 'none') {
-        // Section shifts (Carter & von Appen: e.g. ≈68 → ≈83 BPM) are steps,
-        // not drifts; do not average across a well-supported step.
-        const seg = new Int32Array(N), ib = [], jump = new Float64Array(N);
+        const seg = new Int32Array(N), ib = [];
         for (let k = 0; k + 1 < N; k++) ib.push(times[k + 1] - times[k]);
-        for (let k = 8; k <= N - 9; k++) {
-          const left = ib.slice(k - 8, k), right = ib.slice(k, k + 8);
-          const pl = median(left), pr = median(right);
-          const dl = median(left.map(p => Math.abs(p - pl))) / pl;
-          const dr = median(right.map(p => Math.abs(p - pr))) / pr;
-          // A step requires approximately stable plateaus on both sides.
-          // Otherwise a phrase's continuous rubato is split into false steps.
-          if (dl < 0.025 && dr < 0.025) jump[k] = Math.abs(Math.log(pr / pl));
-        }
         // A tracker can change from the beat to a swung off-beat without
         // the music changing speed. An isolated gap between steady runs
         // of the SAME period is a phase ambiguity (or a pause), not evidence
@@ -8676,15 +8859,14 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
               && Math.abs(ib[k] / ((pl + pr) * 0.5) - 1) > 0.12) phaseBreaks[k + 1] = 1;
         }
         for (let k = 1, id = 0; k < N; k++) {
-          let isMax = jump[k] > Math.log(1.08);
-          for (let d = -6; isMax && d <= 6; d++) if (d && jump[k + d] > jump[k]) isMax = false;
-          if (isMax || phaseBreaks[k]) id++;
+          if (sectionSteps[k] || phaseBreaks[k]) id++;
           seg[k] = id;
         }
-        localFit = beatmapLocalFit(times, weights, BEATMAP_FIT_HALF, seg);
+        localFit = beatmapAdaptiveFit(times, weights, seg);
         S = localFit.pulseTimes;
-        if (kind !== 'human') runs.forEach(r => {
+        runs.forEach(r => {
           for (let k = r.i0; k <= r.i1; k++) {
+            if (sectionSteps[k] && k === r.i1) continue;
             S[k] = r.a + r.p * (k - r.i0); localFit.periods[k] = r.p;
           }
         });
@@ -8694,7 +8876,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       if (kind === 'none') label = globalBpm;
       else if (kind === 'human' || !groups.length) label = 60 * (N - 1) / (S[N - 1] - S[0]);
       else label = groups.slice().sort((x, y) => y.n - x.n)[0].bpm;
-      if (!(label > 0) || Math.abs(label / globalBpm - 1) > 0.25) return null;
+      if (!(label > 0) || !Number.isFinite(label)) return null;
 
       const nodeT = [], nodeB = [], nodeC = [];
       let T = null;
@@ -8706,32 +8888,51 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         nodeT.push(duration); nodeB.push(label); nodeC.push(0);
       } else {
         T = new Float64Array(N);
+        const confidence = new Float64Array(N);
         for (let k = 0; k < N; k++) {
-          T[k] = 60 / localFit.periods[k];
-          if (!(T[k] > label * 0.4 && T[k] < label * 2.5)) return null;
+          const period = localFit.periods[k];
+          T[k] = 60 / period;
+          if (!(T[k] > label * 0.4 && T[k] < label * 2.5) || phaseBreaks[k] || phaseBreaks[k + 1]) continue;
+          const lo = Math.max(0, k - 3), hi = Math.min(N - 1, k + 3);
+          const observed = weights.slice(lo, hi + 1);
+          const support = Math.min(weights[k], median(observed));
+          const fitQuality = clamp(1 - localFit.residuals[k] / (period * 0.12), 0, 1);
+          confidence[k] = clamp(support / 1.2, 0, 1) * fitQuality * Math.min(1, localFit.counts[k] / 4);
         }
+        if (!beatmapFillGaps(S, T, confidence, label)) kind = 'none';
         const keep = [];
         for (let k = 0; k < N; k++) if (S[k] > 1e-6 && S[k] < duration - 1e-6) keep.push(k);
         if (keep.length < 8) return null;
-        const c = k => {
-          if (phaseBreaks[k] || phaseBreaks[k + 1]) return 0;
-          const lo = Math.max(0, k - BEATMAP_FIT_HALF), hi = Math.min(N - 1, k + BEATMAP_FIT_HALF);
-          const support = median(weights.slice(lo, hi + 1));
-          const fitSpread = localFit.residuals[k] / localFit.periods[k];
-          const fitQuality = clamp(1 - fitSpread / 0.12, 0, 1);
-          return clamp(support / 1.2, 0, 1) * fitQuality * Math.min(1, localFit.counts[k] / 4);
-        };
         nodeT.push(0); nodeB.push(T[keep[0]]); nodeC.push(0);
-        keep.forEach(k => { nodeT.push(S[k]); nodeB.push(T[k]); nodeC.push(c(k)); });
+        keep.forEach(k => {
+          const resumes = k >= 2 && confidence[k - 1] < TEMPO_SUPPORT_MIN && confidence[k - 2] < TEMPO_SUPPORT_MIN;
+          const changesSection = k > 0 && sectionSteps[k] && confidence[k - 1] >= TEMPO_SUPPORT_MIN;
+          if ((changesSection || resumes) && confidence[k] >= TEMPO_SUPPORT_MIN
+              && S[k] - nodeT[nodeT.length - 1] > 0.002) {
+            nodeT.push(S[k] - 0.001); nodeB.push(T[k - 1]); nodeC.push(confidence[k - 1]);
+          }
+          nodeT.push(S[k]); nodeB.push(T[k]); nodeC.push(confidence[k]);
+        });
         const kl = keep[keep.length - 1];
         nodeT.push(duration); nodeB.push(T[kl]); nodeC.push(0);
       }
+
+      // A chorus with many fast beats must not get extra weight in AVG. BPM.
+      // Use measured time, excluding padding and spans without a reliable pulse.
+      let measuredSeconds = 0, measuredPulse = 0;
+      for (let i = 1; i < nodeT.length; i++) {
+        if (Math.min(nodeC[i - 1], nodeC[i]) < TEMPO_SUPPORT_MIN) continue;
+        const dt = nodeT[i] - nodeT[i - 1];
+        measuredSeconds += dt;
+        measuredPulse += dt * (nodeB[i - 1] + nodeB[i]) * 0.5;
+      }
+      if (measuredSeconds > 0) label = measuredPulse / measuredSeconds;
 
       // Descriptive CV of non-overlapping eight-interval tempo readings.
       // This equals two bars only in 4/4; it is not the published downbeat CV.
       const two = [];
       for (let k = 0; k + 8 < N; k += 8) {
-        if (Array.from(phaseBreaks.slice(k + 1, k + 9)).some(Boolean)) continue;
+        if (phaseBreaks.subarray(k + 1, k + 9).some(Boolean) || weights.slice(k, k + 9).filter(w => w >= TEMPO_SUPPORT_MIN).length < 7) continue;
         two.push(480 / (times[k + 8] - times[k]));
       }
       let cv = 0;
@@ -8754,8 +8955,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         jitterMs: Math.round(jitter * 10000) / 10,
         // Conservative timing spread used to suppress small Change alerts.
         // This is a heuristic, not a calibrated probability or error bound.
-        noiseRel: kind === 'none' ? 0 : Math.max(0.0005, jitter / (6 * pMed)),
-        windowBeats: 8,
+        noiseRel: kind === 'none' ? 0 : Math.max(0.0005, Math.min(jitter / (6 * pMed), beatmapBarNoise(raw) / (2 * pMed))),
+        windowBeats: 2 * BEATMAP_LONG_HALF,     // maximum width of the adaptive fit
+        minWindowBeats: 2 * BEATMAP_SHORT_HALF,
         estimate: true,
         cv: Math.round(cv * 100) / 100,
         changePct: Math.round(changePct * 10) / 10
@@ -8805,7 +9007,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       };
     }
 
+    function audioEstimateBpm(analysis) {
+      if (!analysis || (analysis.timing && analysis.timing.kind === 'none')) return NaN;
+      return analysis.globalBpm > 0 ? analysis.globalBpm : NaN;
+    }
+
     function analyzeTrackBPM(buffer) {
+      if (lastSmartTempo && lastSmartTempo.buffer !== buffer) lastSmartTempo = null;
       const input = prepareTempoAnalysisInput(buffer);
       return tempoAnalysisOnSourceTimeline(analyzeTempoSignal(input.data, input.sampleRate, buffer), input);
     }
@@ -8814,7 +9022,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const duration = data.length / sampleRate;
       const { envelope, rate } = buildOnsetEnvelope(data, sampleRate);
 
-      if (!envelope.length || duration < 1.5) {
+      if (!envelope.some(value => value > 0) || duration < 1.5) {
         return {
           globalBpm: 120, confidence: 0, times: [0, duration],
           actualBeats: [0, duration * 2], predictedBeats: [0, duration * 2],
@@ -8863,7 +9071,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const guideOnset = smart && smart.onset;
       const useBandGuide = !!(guideOnset && guideOnset.combined && guideOnset.rate > 0);
       const dynamicProfile = buildDynamicTempoProfile(
-        useBandGuide ? guideOnset.combined : envelope,
+        useBandGuide ? guideOnset.pulse : envelope,
         useBandGuide ? guideOnset.rate : rate, duration, globalBpm, global.confidence);
       if (useBandGuide) dynamicProfile.centers = dynamicProfile.centers.map(t => clamp(t + (Number(guideOnset.t0) || 0), 0, duration));
       const profileCenters = dynamicProfile.centers;
@@ -8894,7 +9102,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         const onset = smart && smart.onset;
         const useSmart = !!(onset && onset.combined && onset.combined.length >= 64 && onset.rate > 0);
         beatMap = buildBeatTempoMap({
-          odf: useSmart ? onset.combined : envelope,
+          odf: useSmart ? onset.pulse : envelope,
           odfRate: useSmart ? onset.rate : rate,
           odfT0: useSmart ? (Number(onset.t0) || 0) : 0.5 / rate,
           duration, globalBpm, guide: dynamicProfile,
@@ -9102,13 +9310,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       if (!pick) {
         knownBpmInfo = null;
         baseTrackBpmData = audioTrackBpmData;
-        detectedBpm = audioTrackBpmData.globalBpm;
+        detectedBpm = audioEstimateBpm(audioTrackBpmData);
       } else {
         const choice = chooseKnownBpmOctave(pick, audioBuffer);
         const text = knownBpmHintFor(pick, choice);
         knownBpmInfo = { bpm: choice.bpm, K: pick.K, source: pick.top, alt: pick.alt, factor: choice.factor,
           refined: choice.refined, scores: choice.scores, candidates: pick.candidates, hint: text.hint, detail: text.detail,
-          audioBpm: audioTrackBpmData.globalBpm };
+          audioBpm: audioEstimateBpm(audioTrackBpmData) };
         baseTrackBpmData = scaleTrackBpmData(audioTrackBpmData, choice.bpm);
         detectedBpm = choice.bpm;
       }
@@ -9198,6 +9406,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
     function recalibrateTrackData() {
       if (!baseTrackBpmData) return;
+      if (!Number.isFinite(getActiveBpm()) && baseTrackBpmData.timing && baseTrackBpmData.timing.kind === 'none') {
+        trackBpmData = null;
+        return;
+      }
       if (isFinite(manualBpm)) {
         const base = baseTrackBpmData;
         const measured = base.measuredBpm > 0 ? base.measuredBpm : base.globalBpm;
@@ -9219,7 +9431,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const bpm = getActiveBpm();
       const pulseProvisional = audioTrackBpmData && (!audioTrackBpmData.timing
         || audioTrackBpmData.timing.source !== 'beats' || audioTrackBpmData.timing.kind === 'none');
-      const bpmHtml = isFinite(bpm) ? fmtBpm(bpm) : fmtBpm(0);
+      const bpmHtml = isFinite(bpm) ? fmtBpm(bpm) : audioTrackBpmData ? roCells('----') : fmtBpm(0);
       estBpm.innerHTML = bpmHtml;
       if (mobileEstBpm) mobileEstBpm.innerHTML = bpmHtml;
       if (isFinite(manualBpm)) {
@@ -9246,8 +9458,12 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         bpmHint.textContent += ' · average BPM';
         bpmHint.title += ' Average mode uses this constant BPM for the graph, Ë count and waveform. Change stays gray.';
       } else if (pulseProvisional) {
+        if (audioTrackBpmData.timing && audioTrackBpmData.timing.kind === 'none' && !isFinite(manualBpm) && !knownBpmInfo)
+          bpmHint.textContent = 'No clear beat · enter a BPM in Track tools';
         if (isFinite(manualBpm) || knownBpmInfo) bpmHint.textContent += ' · approximate fluctuation';
-        bpmHint.title += ' The graph and Ë count use an approximate pulse reading. Change follows movement on the same graph.';
+        bpmHint.title += trackBpmData
+          ? ' The dotted curve supplies an estimated pulse for the Ë count. Change waits for supported beat timing.'
+          : 'Audio playback and the song clock are available.';
       }
       updateBpmMemoryUI();
     }
@@ -9265,23 +9481,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       
       let beatsElapsed = NaN;
       
-      if (trackBpmData) {
-          const { times, actualBeats } = trackBpmData;
-          for(let i=0; i<times.length; i++) {
-              if (time <= times[i]) {
-                  if (i === 0) { beatsElapsed = 0; break; }
-                  const t0 = times[i-1], t1 = times[i];
-                  const b0 = actualBeats[i-1], b1 = actualBeats[i];
-                  const factor = (time - t0) / (t1 - t0);
-                  beatsElapsed = b0 + factor * (b1 - b0);
-                  break;
-              }
-          }
-          if (isNaN(beatsElapsed)) beatsElapsed = actualBeats[actualBeats.length-1];
-      } else {
-          beatsElapsed = isFinite(bpm) ? (bpm/60)*time : NaN;
-      }
-      
+      if (trackBpmData) beatsElapsed = tempoMapPosition(trackBpmData, time);
+      else beatsElapsed = isFinite(bpm) ? (bpm / 60) * time : NaN;
+
       // Total beats must match whatever source beatsElapsed is drawn from,
       // otherwise fluctuating (actual) BPM vs flat (global) BPM math causes
       // "remaining" to never quite hit 0 / "elapsed" to never quite hit total
@@ -9372,11 +9574,16 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     // --- Audio Playback Controls ---
     async function playAudio() {
         if (!audioBuffer) return;
-        if (isPlaying) return;
-        
+        const requested = ++playbackRequest;
+        const buffer = audioBuffer;
         initAudioCtx();
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-        
+        if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+          try { await audioCtx.resume(); }
+          catch (_) { if (requested === playbackRequest) bpmHint.textContent = 'Tap Play to resume audio'; return; }
+        }
+        if (requested !== playbackRequest || audioBuffer !== buffer || isPlaying) return;
+        if (pauseOffset >= buffer.duration) pauseOffset = 0;
+
         sourceNode = audioCtx.createBufferSource();
         sourceNode.buffer = audioBuffer;
         sourceNode.connect(analyser);
@@ -9397,6 +9604,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     }
 
     function pauseAudio() {
+        playbackRequest++;
         if (!isPlaying) return;
         if (sourceNode) {
             sourceNode.onended = null;
@@ -9413,6 +9621,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     }
 
     function stopAudio() {
+        playbackRequest++;
         if (isPlaying && sourceNode) {
             sourceNode.onended = null;
             sourceNode.stop();
@@ -9493,25 +9702,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       let targetTime = NaN;
 
       if (trackBpmData) {
-        const { times, actualBeats } = trackBpmData;
-        const maxBeats = actualBeats[actualBeats.length - 1];
-
-        if (targetBeat >= maxBeats) {
-          targetTime = times[times.length - 1];
-        } else if (targetBeat <= 0) {
-          targetTime = times[0] || 0;
-        } else {
-          for (let i = 0; i < actualBeats.length; i++) {
-            if (targetBeat <= actualBeats[i]) {
-              if (i === 0) { targetTime = times[0]; break; }
-              const b0 = actualBeats[i - 1], b1 = actualBeats[i];
-              const t0 = times[i - 1], t1 = times[i];
-              const factor = (targetBeat - b0) / (b1 - b0);
-              targetTime = t0 + factor * (t1 - t0);
-              break;
-            }
-          }
-        }
+        const counts = trackBpmData.actualBeats;
+        targetTime = tempoMapPosition(trackBpmData, Math.min(targetBeat, counts[counts.length - 1]), true);
       } else {
         const bpm = getActiveBpm();
         if (isFinite(bpm) && bpm > 0) targetTime = targetBeat * 60 / bpm;
@@ -9668,9 +9860,11 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     reanalyzeBtn.addEventListener('click', () => {
       if(!audioBuffer) return;
       bpmHint.textContent = 'Re-analyzing...';
-      setTimeout(() => { 
+      const token = currentLoadToken, buffer = audioBuffer;
+      setTimeout(() => {
+        if (token !== currentLoadToken || buffer !== audioBuffer) return;
         baseTrackBpmData = analyzeTrackBPM(audioBuffer); 
-        detectedBpm = baseTrackBpmData.globalBpm; 
+        detectedBpm = audioEstimateBpm(baseTrackBpmData); 
         audioTrackBpmData = baseTrackBpmData;
         resolveKnownBpmForCurrentSong({ render: false });
         recalibrateTrackData();
@@ -10824,9 +11018,86 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       if (!data || !data.timing || data.timing.source !== 'beats' || data.timing.kind === 'none') return 0;
       const values = data.localConfidences;
       if (!Array.isArray(values) || values.length !== data.times.length) return 0;
-      return clamp(sampleTrackSeries(time, data.times, values), 0, 1);
+      const times = data.times, last = times.length - 1;
+      if (time <= times[0]) return clamp(values[0], 0, 1);
+      if (time >= times[last]) return clamp(values[last], 0, 1);
+      let lo = 0, hi = last;
+      while (lo + 1 < hi) {
+        const mid = (lo + hi) >> 1;
+        if (times[mid] <= time) lo = mid; else hi = mid;
+      }
+      // The graph draws a dotted interval if either endpoint is uncertain.
+      return clamp(time === times[lo] ? values[lo] : Math.min(values[lo], values[hi]), 0, 1);
     }
 
+
+    // Beat counts integrate a linearly changing rate. Use the same fractional
+    // interval for the counter, tooltip, analog waveform and inverse beat seek.
+    // Timelines that have only accumulated counts retain linear interpolation.
+    function tempoMapPosition(data, value, inverse = false) {
+      const T = data.times, B = data.actualBeats, last = T.length - 1;
+      const xs = inverse ? B : T, ys = inverse ? T : B;
+      if (value <= xs[0]) return ys[0];
+      if (value >= xs[last]) {
+        const bpm = Number(data.localBpms && data.localBpms[last]) || Number(data.globalBpm) || 120;
+        return ys[last] + (value - xs[last]) * (inverse ? 60 / bpm : bpm / 60);
+      }
+      let lo = 0, hi = last;
+      while (lo + 1 < hi) {
+        const mid = (lo + hi) >> 1;
+        if (xs[mid] <= value) lo = mid; else hi = mid;
+      }
+      const f = (value - xs[lo]) / (xs[hi] - xs[lo] || 1);
+      const dt = T[hi] - T[lo], db = B[hi] - B[lo];
+      const p = data.localBpms && data.localBpms[lo], q = data.localBpms && data.localBpms[hi];
+      if (!(p > 0 && q > 0 && dt > 0 && db > 0) || Math.abs(db - dt * (p + q) / 120) > 0.00001)
+        return ys[lo] + f * (ys[hi] - ys[lo]);
+      if (!inverse) return B[lo] + dt * f * (2 * p + (q - p) * f) / 120;
+      // Rationalized quadratic root remains stable when the rate is constant.
+      const speed = Math.sqrt(Math.max(0, p * p + (q - p) * (p + q) * f));
+      return T[lo] + dt * f * (p + q) / (p + speed);
+    }
+
+    // One event rule for the player, watch and profile. A reference or a
+    // dotted stretch can advance the counter, but cannot confirm a change.
+    function getTempoChangeEvents(data, start = -Infinity, end = Infinity) {
+      const series = getTrackTempoSeries(data);
+      if (!series || data.tempoMode === 'average' || !data.timing
+          || data.timing.source !== 'beats' || data.timing.kind === 'none') return [];
+      const support = data.localConfidences, events = [];
+      if (!Array.isArray(support) || support.length !== series.times.length) return events;
+      const noise = Math.max(0, Number(data.timing.noiseRel) || 0);
+      let held = null, direction = 0, since = 0, lastTime = -Infinity;
+      for (let i = 0; i < series.times.length; i++) {
+        const t = series.times[i], b = series.bpms[i];
+        if (t < start) continue;
+        if (t > end) break;
+        if (!(support[i] >= TEMPO_SUPPORT_MIN && b > 0 && Number.isFinite(b))) { direction = 0; continue; }
+        if (held === null) {
+          events.push({ time: t, bpm: b, delta: 0, from: b });
+          held = b; lastTime = t; continue;
+        }
+        if (t - lastTime > Math.max(2, 2.5 * 60 / b)) direction = 0;
+        lastTime = t;
+        const delta = b - held, sign = Math.sign(delta);
+        if (Math.abs(delta) < Math.max(0.5, held * 0.004, 3 * noise * held)) { direction = 0; continue; }
+        if (sign !== direction) { direction = sign; since = t; continue; }
+        if (t - since + 0.001 < clamp(60 / b, 0.25, 1.5)) continue;
+        events.push({ time: t, bpm: b, delta, from: held });
+        held = b; direction = 0;
+      }
+      return events;
+    }
+
+    function tempoPlotRange(data, bpms) {
+      const reference = data.globalBpm;
+      let lo = reference, hi = reference;
+      for (const b of bpms) if (Number.isFinite(b) && b > 0) { lo = Math.min(lo, b); hi = Math.max(hi, b); }
+      const timingSpread = reference * (Number(data.timing && data.timing.noiseRel) || 0);
+      const half = Math.max(2, 0.015 * reference, 3 * timingSpread, 0.60 * (hi - lo));
+      const center = (hi + lo) / 2;
+      return [Math.max(0, center - half), center + half];
+    }
 
     //  BPM TRACKING GRAPH
     // ═══════════════════════════════════════════════════════
@@ -10839,20 +11110,25 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const timingEl = document.getElementById('graphTiming');
       const timingDetailEl = document.getElementById('graphTimingDetail');
       const fluctuationGraphAria = canvas.getAttribute('aria-label');
-      let timingCaptionSource;
+      let timingCaptionSource, previousUnclear = false;
       const fmtCaptionBpm = v => (Math.round(Number(v) * 100) / 100).toFixed(2);
       function updateTimingCaption(data) {
-        if (data === timingCaptionSource) return;
+        const unclear = !data && Boolean(audioTrackBpmData && audioTrackBpmData.timing && audioTrackBpmData.timing.kind === 'none');
+        if (data === timingCaptionSource && unclear === previousUnclear) return;
         timingCaptionSource = data;
+        previousUnclear = unclear;
         const tm = data && data.timing;
         const averageMode = Boolean(data && data.tempoMode === 'average');
         document.getElementById('graphBeatModeLabel').textContent = averageMode ? 'Beats · average BPM' : 'Beats · changing BPM';
         document.getElementById('graphTempoModeLabel').textContent = averageMode ? 'AVG. BPM' : 'Approx. BPM';
         document.getElementById('graphElapsedLegend').textContent = averageMode ? 'Red: elapsed beats (Ë) at the selected average BPM' : 'Red: elapsed beats (Ë) from the approximate pulse';
-        document.getElementById('graphTempoLegend').textContent = averageMode ? 'Gray-brown: constant AVG. BPM' : 'Gray-brown: approximate local BPM over about eight beat intervals';
+        document.getElementById('graphTempoLegend').textContent = averageMode ? 'Gray-brown: constant AVG. BPM' : 'Gray-brown shows the local pulse in BPM';
         canvas.setAttribute('aria-label', averageMode ? 'Average BPM mode: red and dashed gray show elapsed beats at the same constant AVG. BPM; gray-brown shows that constant BPM. The counter and waveform follow the same rate. Change stays gray. Use Track position or Jump controls to seek with a keyboard.' : fluctuationGraphAria);
         let text = '', detail = '';
-        if (data && data.sensorCaption) {
+        if (unclear) {
+          text = 'No clear beat';
+          detail = 'Enter a BPM in Track tools to count along.';
+        } else if (data && data.sensorCaption) {
           text = data.sensorCaption.text; detail = data.sensorCaption.detail;
         } else if (data && data.tempoMode === 'average') {
           text = `Average BPM · ${fmtCaptionBpm(data.globalBpm)} BPM`;
@@ -10864,18 +11140,20 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           const vals = series ? series.bpms.filter(v => Number.isFinite(v) && v > 0).slice().sort((a, b) => a - b) : [];
           const pick = q => vals.length ? vals[Math.min(vals.length - 1, Math.max(0, Math.round(q * (vals.length - 1))))] : NaN;
           if (tm.kind === 'grid') {
-            if (tempos.length <= 1) text = `Approx. BPM · mostly steady ${fmtCaptionBpm(data.measuredBpm)} BPM`;
+            if (tempos.length <= 1) text = `Approx. BPM · mostly steady ${fmtCaptionBpm(tempos[0] || data.measuredBpm)} BPM`;
             else if (tempos.length === 2) text = `Approx. BPM · sections near ${fmtCaptionBpm(tempos[0])} and ${fmtCaptionBpm(tempos[1])} BPM`;
             else text = `Approx. BPM · ${tempos.length} steady sections, ${fmtCaptionBpm(Math.min(...tempos))}–${fmtCaptionBpm(Math.max(...tempos))} BPM`;
           } else if (tm.kind === 'hybrid') {
-            text = `Approx. fluctuation · steady sections and changing tempo`;
+            text = tempos.length === 2
+              ? `Steady passages near ${tempos[0].toFixed(1)} and ${tempos[1].toFixed(1)} BPM`
+              : 'Approx. fluctuation · steady passages and changing or uncertain timing';
           } else if (tm.kind === 'human') {
             const c = Number(tm.changePct) || 0;
             text = Math.abs(c) >= 3
               ? `Approx. fluctuation · ${c > 0 ? 'rises' : 'falls'} ${Math.round(Math.abs(c))}% between opening and late passages`
               : `Approx. fluctuation · central range ${pick(0.05).toFixed(1)}–${pick(0.95).toFixed(1)} BPM`;
           } else if (tm.kind === 'none') {
-            text = 'Approx. fluctuation · reference BPM';
+            text = 'Pulse unclear · reference BPM';
           }
           const parts = [];
           if (tm.kind === 'grid' || tm.kind === 'hybrid') parts.push(`${Math.round((Number(tm.gridShare) || 0) * 100)}% of tracked beats fit steady grids; this does not identify a click track`);
@@ -10884,10 +11162,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           if (Number.isFinite(Number(tm.jitterMs)) && tm.kind !== 'none') parts.push(`timing spread ≈ ${Number(tm.jitterMs).toFixed(1)} ms, including detection error`);
           if (Number.isFinite(Number(tm.cv)) && tm.kind !== 'none') parts.push(`approximate eight-interval tempo CV ${Number(tm.cv).toFixed(2)}%; not a genre threshold or a manually verified downbeat measure`);
           if (Number(data.measuredBpm) > 0 && Math.abs(Number(data.globalBpm) - Number(data.measuredBpm)) >= 0.005) parts.push(`the BPM shown is ${fmtCaptionBpm(data.globalBpm)}; this recording measures ${fmtCaptionBpm(data.measuredBpm)}`);
-          detail = 'This recording: ' + parts.join('; ') + '.';
+          detail = parts.join('. ') + '.';
         } else if (data) {
-          text = 'Approx. fluctuation · reference BPM';
-          detail = 'The dotted profile shows an approximate tempo reading. BPM in the Change meter follows this line, and Change briefly reports movement on it. Ë follows the same approximate pulse.';
+          text = tm && tm.kind === 'none' ? 'Pulse unclear · reference BPM' : 'Estimated tempo · limited beat evidence';
+          detail = 'The dotted line supplies an estimated rate for elapsed beats. Change waits for a clear pulse.';
         }
         if (timingEl) { timingEl.textContent = text; timingEl.hidden = !text; timingEl.title = text; }
         if (timingDetailEl) { timingDetailEl.textContent = detail; timingDetailEl.hidden = !detail; }
@@ -11059,15 +11337,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         const beatStep = stepFactor * magnitude;
         const beatAxisMax = Math.ceil(maxBeats / beatStep) * beatStep;
 
-        let minTempo = globalBpm, maxTempo = globalBpm;
-        for (const bpm of tempoBpms) {
-          if (Number.isFinite(bpm)) { minTempo = Math.min(minTempo, bpm); maxTempo = Math.max(maxTempo, bpm); }
-        }
-        // Keep at least ±5% or ±5 BPM of context instead of enlarging tiny
-        // detector deviations to fill the graph. Never cap genuine changes.
-        const halfSpan = Math.max(5, globalBpm * 0.05,
-          Math.abs(globalBpm - minTempo) * 1.2, Math.abs(maxTempo - globalBpm) * 1.2);
-        const minBpm = Math.max(0, globalBpm - halfSpan), maxBpm = globalBpm + halfSpan;
+        const [minBpm, maxBpm] = tempoPlotRange(trackBpmData, tempoBpms);
         const getX = t => padL + (t / maxTime) * drawW;
         const getYBeats = beats => bottom - (beats / beatAxisMax) * drawH;
         const getYBpm = bpm => bottom - ((bpm - minBpm) / (maxBpm - minBpm)) * drawH;
@@ -11110,7 +11380,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         ctx.textAlign = 'center';
         for (const t of timeTicks) {
           const x = getX(t);
-          const beatAtTime = sampleTrackSeries(t, times, actualBeats);
+          const beatAtTime = tempoMapPosition(trackBpmData, t);
           const beatLabel = String(Math.max(0, Math.round(Number(beatAtTime) || 0)));
           ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, bottom);
           ctx.strokeStyle = '#160403'; ctx.lineWidth = dpr; ctx.setLineDash([]); ctx.stroke();
@@ -11158,14 +11428,26 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         ctx.save();
         ctx.strokeStyle = TEMPO; ctx.lineWidth = 1.8 * dpr;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        // Stroke continuous runs so the dash phase survives many subpixel beats.
+        const confidence = trackBpmData.localConfidences || [];
+        const measured = trackBpmData.timing && trackBpmData.timing.source === 'beats' && trackBpmData.timing.kind !== 'none';
+        let lastSolid = null;
         for (let i = 1; i < tempoTimes.length; i++) {
-          if (!Number.isFinite(tempoBpms[i - 1]) || !Number.isFinite(tempoBpms[i])) continue;
-          const support = trackBpmData.tempoMode === 'average' ? 1 : Math.min(getTrackTempoSupportAtTime(tempoTimes[i - 1], trackBpmData),
-            getTrackTempoSupportAtTime(tempoTimes[i], trackBpmData));
-          ctx.setLineDash(support >= 0.35 ? [] : [2 * dpr, 4 * dpr]);
-          ctx.beginPath(); ctx.moveTo(getX(tempoTimes[i - 1]), getYBpm(tempoBpms[i - 1]));
-          ctx.lineTo(getX(tempoTimes[i]), getYBpm(tempoBpms[i])); ctx.stroke();
+          if (!Number.isFinite(tempoBpms[i - 1]) || !Number.isFinite(tempoBpms[i])) {
+            if (lastSolid !== null) ctx.stroke();
+            lastSolid = null; continue;
+          }
+          const solid = trackBpmData.tempoMode === 'average' ||
+            (measured && Math.min(confidence[i - 1], confidence[i]) >= TEMPO_SUPPORT_MIN);
+          if (solid !== lastSolid) {
+            if (lastSolid !== null) ctx.stroke();
+            ctx.setLineDash(solid ? [] : [2 * dpr, 4 * dpr]);
+            ctx.beginPath(); ctx.moveTo(getX(tempoTimes[i - 1]), getYBpm(tempoBpms[i - 1]));
+            lastSolid = solid;
+          }
+          ctx.lineTo(getX(tempoTimes[i]), getYBpm(tempoBpms[i]));
         }
+        if (lastSolid !== null) ctx.stroke();
         ctx.restore();
         drawSeries(times, actualBeats, beatCount, getYBeats, RED, 2.8, []);
         // Draw narrow gray dashes last so both beat styles remain visible when
@@ -11178,7 +11460,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         const cursorTime = hoverActive ? ((graphHoverX - padL) / drawW) * maxTime : playbackTime;
         if (hoverActive || cursorTime > 0) {
           const x = getX(cursorTime);
-          const beats = sampleTrackSeries(cursorTime, times, actualBeats);
+          const beats = tempoMapPosition(trackBpmData, cursorTime);
           const reference = sampleTrackSeries(cursorTime, times, predictedBeats);
           const bpm = getTrackTempoAtTime(cursorTime, trackBpmData);
           ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, bottom);
@@ -11204,7 +11486,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
             { text: clockText(cursorTime), color: 'rgba(255,255,255,0.92)', time: true },
             { text: `${beats.toFixed(2)} Ë`, color: RED, dashed: false },
             { text: `${reference.toFixed(2)} Ë`, color: REFERENCE, dashed: true },
-            { text: trackBpmData.tempoMode === 'average' ? `${bpm.toFixed(2)} AVG. BPM` : `${bpm.toFixed(2)} BPM approx.`, color: TEMPO, dashed: false }
+            { text: trackBpmData.tempoMode === 'average' ? `${bpm.toFixed(2)} AVG. BPM` :
+              `${bpm.toFixed(2)} BPM${getTrackTempoSupportAtTime(cursorTime, trackBpmData) >= TEMPO_SUPPORT_MIN ? '' : ' est.'}`,
+              color: TEMPO, dashed: trackBpmData.tempoMode !== 'average' && getTrackTempoSupportAtTime(cursorTime, trackBpmData) < TEMPO_SUPPORT_MIN }
           ];
           const fontSize = (mobile ? 10 : 11) * dpr;
           ctx.font = `bold ${fontSize}px 'Lido', serif`;
@@ -11218,7 +11502,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           const boxY = clamp(Math.min(getYBeats(beats), getYBeats(reference)) - boxH - 10 * dpr,
             padT + 3 * dpr, bottom - boxH - 3 * dpr);
           ctx.fillStyle = 'rgba(4,2,1,0.92)';
-          ctx.beginPath(); ctx.roundRect(boxX, boxY, boxW, boxH, 5 * dpr); ctx.fill();
+          ctx.beginPath();
+          if (typeof ctx.roundRect === 'function') ctx.roundRect(boxX, boxY, boxW, boxH, 5 * dpr);
+          else ctx.rect(boxX, boxY, boxW, boxH);
+          ctx.fill();
           rows.forEach((row, index) => {
             const y = boxY + 4 * dpr + (index + 0.5) * rowH;
             if (!row.time) {   // the time row has no line key
@@ -11917,8 +12204,14 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const playing=()=>{try{return typeof isPlaying!=='undefined'&&!!isPlaying}catch(_){return false}};
       function arrays(){const d=getData();return d&&Array.isArray(d.times)&&Array.isArray(d.actualBeats)&&d.times.length&&d.actualBeats.length&&d.times.length===d.actualBeats.length?d:null}
       function bpm(){const d=getData();let v=d&&Number(d.globalBpm);if(!isFinite(v)||v<=0){try{v=typeof manualBpm!=='undefined'&&isFinite(manualBpm)&&manualBpm>0?Number(manualBpm):NaN}catch(_){}}return isFinite(v)&&v>0?v:120}
-      function timeToBeat(t){const d=arrays();if(!d)return Math.max(0,t*bpm()/60);const T=d.times,B=d.actualBeats,n=T.length;if(t<=T[0])return B[0]||0;if(t>=T[n-1]){const z=Number(d.localBpms&&d.localBpms[n-1])||Number(d.globalBpm)||bpm();return Math.max(0,B[n-1]+(t-T[n-1])*z/60)}let lo=0,hi=n-1;while(lo+1<hi){const m=(lo+hi)>>1;if(T[m]<=t)lo=m;else hi=m}const f=(t-T[lo])/(T[hi]-T[lo]||1);return B[lo]+f*(B[hi]-B[lo])}
-      function beatToTime(b){b=Math.max(0,Number(b)||0);const d=arrays();if(!d)return b*60/bpm();const T=d.times,B=d.actualBeats,n=B.length;if(b<=B[0])return T[0]||0;if(b>=B[n-1]){const z=Number(d.localBpms&&d.localBpms[n-1])||Number(d.globalBpm)||bpm();return T[n-1]+(b-B[n-1])*60/Math.max(1,z)}let lo=0,hi=n-1;while(lo+1<hi){const m=(lo+hi)>>1;if(B[m]<=b)lo=m;else hi=m}const f=(b-B[lo])/(B[hi]-B[lo]||1);return T[lo]+f*(T[hi]-T[lo])}
+      function timeToBeat(t) {
+        const d = arrays();
+        return d ? tempoMapPosition(d, t) : Math.max(0, t * bpm() / 60);
+      }
+      function beatToTime(b) {
+        const d = arrays();
+        return d ? tempoMapPosition(d, Math.max(0, b), true) : Math.max(0, b) * 60 / bpm();
+      }
       /* Temporary audition preview: positive values move the waveform right
          and negative values move it left. The playback needle and all waveform
          seeks use the same display-to-source mapping, so the sound at the
@@ -12049,49 +12342,15 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
          measured at that time; no future settling value is announced early.
          The threshold is heuristic (at least 0.5 BPM, raised with timing
          spread); it is not a confidence interval or a universal audible JND. */
-      const CHANGE_MIN=0.5,CHANGE_PULSE_SECONDS=1.25;
+      const CHANGE_PULSE_SECONDS=1.25;
       let chgEvents=[],chgSource=null;
       const pad=(v,w)=>{const s=Math.abs(Number(v)||0).toFixed(2);return s.length>=w?s:'0'.repeat(w-s.length)+s};
       function clockText(t){const raw=Math.max(0,Number(t)||0),s=Math.floor((raw+1e-9)*100)/100,m=Math.floor(s/60),r=s-m*60;return String(m).padStart(2,'0')+':'+(r<10?'0':'')+r.toFixed(2)}
-      function changeThreshold(data, B) {
-        const noise = data && data.timing ? Number(data.timing.noiseRel) : NaN;
-        if (!(noise > 0)) return CHANGE_MIN;
-        const vals = Array.from(B).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
-        if (!vals.length) return CHANGE_MIN;
-        const mid = Number(data.measuredBpm) > 0 ? Number(data.measuredBpm) : vals[vals.length >> 1];
-        return Math.max(CHANGE_MIN, Math.ceil(3 * noise * mid * 20) / 20);
-      }
-      function buildChangeEvents(data) {
-        const out = [], series = getTrackTempoSeries(data);
-        if (!series || data.tempoMode === 'average') return out;
-        const T = series.times, B = series.bpms, n = Math.min(T.length, B.length);
-        const minChange = changeThreshold(data, B);
-        let held = null, candidate = null;
-        for (let i = 0; i < n; i++) {
-          const t = Number(T[i]), b = Number(B[i]);
-          if (!Number.isFinite(t) || !Number.isFinite(b) || b <= 0) continue;
-          if (held === null) {
-            out.push({time: Math.max(0, t), bpm: b, delta: 0});
-            held = b;
-            continue;
-          }
-          const delta = b - held;
-          if (Math.abs(delta) >= minChange - 1e-9) {
-            const direction = Math.sign(delta);
-            if (!candidate || candidate.direction !== direction) candidate = { time: t, direction };
-            if (t - candidate.time >= clamp(60 / b, 0.25, 1)) {
-              out.push({time: Math.max(0, t), bpm: b, delta});
-              held = b; candidate = null;
-            }
-          } else candidate = null;
-        }
-        return out;
-      }
       function changeAt(t){if(!chgEvents.length)return null;let lo=0,hi=chgEvents.length-1;if(t<chgEvents[0].time)return chgEvents[0];while(lo+1<hi){const m=(lo+hi)>>1;if(chgEvents[m].time<=t)lo=m;else hi=m}return chgEvents[hi].time<=t?chgEvents[hi]:chgEvents[lo]}
       const getChangeData=()=>{const sv=sensorView();if(sv)return sv.change||null;return getData()};
       function drawChange() {
         const data = getChangeData();
-        if (data !== chgSource) { chgSource = data; chgEvents = buildChangeEvents(data); }
+        if (data !== chgSource) { chgSource = data; chgEvents = getTempoChangeEvents(data); }
         const t = typeof isPreviewing !== 'undefined' && isPreviewing ? previewTime : nowTime();
         const currentBpm = getTrackTempoAtTime(t, data);
         const ev = changeAt(t);
@@ -12109,10 +12368,12 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           chgPlus.classList.remove('is-on');chgMinus.classList.remove('is-on');return;
         }
         const changeIsLive = Boolean(ev && ev.delta !== 0 && t >= ev.time && t < ev.time + CHANGE_PULSE_SECONDS);
-        chgFace.title='Approximate BPM follows the graph. Change briefly shows its increase or decrease, then resets to 00.00.';
+        chgFace.title = getTrackTempoSupportAtTime(t, data) >= TEMPO_SUPPORT_MIN
+          ? 'Change shows the signed difference from the last confirmed tempo.'
+          : 'Estimated tempo. Change waits for a clear pulse.';
         chgFace.classList.remove('is-idle');
         chgFace.classList.toggle('is-changed',changeIsLive);
-        chgFace.classList.toggle('is-bpm-on',true);
+        chgFace.classList.toggle('is-bpm-on',getTrackTempoSupportAtTime(t, data) >= TEMPO_SUPPORT_MIN);
         chgDelta.textContent=pad(changeIsLive?ev.delta:0,5);
         chgBpm.textContent=pad(currentBpm,6);
         chgPlus.classList.toggle('is-on',changeIsLive&&ev.delta>0);
@@ -12622,7 +12883,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         fineAdjustNeedle(e.key==='ArrowLeft'?-0.01:0.01);
       },true);
       if(window.ResizeObserver)new ResizeObserver(()=>{if(!analogView.hidden){resize(true);sync(true);draw()}}).observe(scroller);else addEventListener('resize',()=>{if(!analogView.hidden){resize(true);sync(true);draw()}});
-      function loop(){const b=getBuffer(),d=getData();if(b!==lastBuffer){lastBuffer=b;buildPeaks(b);rebuildTotal();clearMark();lastNeedlePage=-1;if(!analogView.hidden){resize(true);sync(false);autoIgnore=performance.now()+120;scroller.scrollLeft=0}}if(d!==lastData){lastData=d;rebuildTotal();if(!analogView.hidden)sync(true)}{const cd=getChangeData();if(cd!==chgSource){chgSource=cd;chgEvents=buildChangeEvents(cd)}}if(!changeView.hidden)drawChange();if(!analogView.hidden){resize(false);const pl=playing();if(pl&&!wasPlaying){userHold=0;follow(true)}wasPlaying=pl;follow(false);draw()}requestAnimationFrame(loop)}
+      function loop(){const b=getBuffer(),d=getData();if(b!==lastBuffer){lastBuffer=b;buildPeaks(b);rebuildTotal();clearMark();lastNeedlePage=-1;if(!analogView.hidden){resize(true);sync(false);autoIgnore=performance.now()+120;scroller.scrollLeft=0}}if(d!==lastData){lastData=d;rebuildTotal();if(!analogView.hidden)sync(true)}{const cd=getChangeData();if(cd!==chgSource){chgSource=cd;chgEvents=getTempoChangeEvents(cd)}}if(!changeView.hidden)drawChange();if(!analogView.hidden){resize(false);const pl=playing();if(pl&&!wasPlaying){userHold=0;follow(true)}wasPlaying=pl;follow(false);draw()}requestAnimationFrame(loop)}
       window.addEventListener('elapsed-beats-tempo-mode-change', () => {
         lastData = getData(); rebuildTotal(); userHold = 0; lastNeedlePage = -1;
         if (!analogView.hidden) { sync(true); follow(true); draw(); }
@@ -20904,6 +21165,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         for(let i=1;i<Math.min(times.length,bpms.length);i++){
           const t0=Number(times[i-1]), t1=Number(times[i]), b0=Number(bpms[i-1]), b1=Number(bpms[i]);
           if(!(t1>t0) || !Number.isFinite(b0) || !Number.isFinite(b1) || !(b0>0 && b1>0))continue;
+          if (getTrackTempoSupportAtTime(t0, data) < TEMPO_SUPPORT_MIN || getTrackTempoSupportAtTime(t1, data) < TEMPO_SUPPORT_MIN) continue;
           const lo=Math.max(start,t0), hi=Math.min(end,t1); if(!(hi>lo))continue;
           const a=b0+(b1-b0)*(lo-t0)/(t1-t0), b=b0+(b1-b0)*(hi-t0)/(t1-t0), dt=hi-lo;
           spans.push({a,b,dt}); integral+=dt*(a+b)/2; totalTime+=dt;
@@ -20919,28 +21181,11 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           return sum+span.dt*(a*b>=0 ? (aa+bb)/2 : (a*a+b*b)/(2*(aa+bb)));
         },0);
         fluctuationBpm=deviation/totalTime;
-        // Reproduce the Change Meter's signed, noise-gated tempo steps.
-        // Average the accepted signed events, not absolute deviations: a
-        // deceleration remains negative and balanced changes approach zero.
-        const finiteBpms=Array.from(bpms || []).map(Number).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
-        const noise=Number(data.timing && data.timing.noiseRel);
-        const center=Number(data.measuredBpm)>0 ? Number(data.measuredBpm) : (finiteBpms.length ? finiteBpms[finiteBpms.length>>1] : 0);
-        const minChange=noise>0 && center>0 ? Math.max(.5,Math.ceil(3*noise*center*20)/20) : .5;
-        let held=null,candidate=null,totalChange=0,changeCount=0;
-        for(let i=0;i<Math.min(times.length,bpms.length);i++){
-          const t=Number(times[i]),b=Number(bpms[i]);
-          if(!Number.isFinite(t)||!Number.isFinite(b)||b<=0||t<start||t>end)continue;
-          if(held===null){held=b;continue;}
-          const delta=b-held;
-          if(Math.abs(delta)>=minChange-1e-9){
-            const direction=Math.sign(delta);
-            if(!candidate||candidate.direction!==direction)candidate={time:t,direction};
-            if(t-candidate.time>=Math.max(.25,Math.min(1,60/b))){
-              totalChange+=delta;changeCount++;held=b;candidate=null;
-            }
-          }else candidate=null;
+        const events = getTempoChangeEvents(data, start, end);
+        if (events.length) {
+          const changes = events.slice(1);
+          signedFluxBpm = changes.length ? changes.reduce((sum, e) => sum + e.delta, 0) / changes.length : 0;
         }
-        signedFluxBpm=changeCount ? totalChange/changeCount : 0;
       }
       const allBeats=Array.isArray(data.actualBeats) ? data.actualBeats[data.actualBeats.length-1] : null;
       return cleanTrack({title:input.title,artist:input.artist,genre:input.genre,bpm:hasPulse ? input.bpm : null,durationSec:duration,
@@ -22863,7 +23108,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     async function renderOffline(buffer, patch) {
       const st = Object.assign({}, S, patch || {});
       const sr = buffer.sampleRate;
-      const ctx = new OfflineAudioContext(2, buffer.length + Math.round(sr * 0.2), sr);
+      const RenderContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const ctx = new RenderContext(2, buffer.length + Math.round(sr * 0.2), sr);
       const ok = (patch && patch.noWorklet) ? false: await loadWorklet(ctx);
       const eng = createEngine(ctx, ok);
       const ir = await buildAll(sr, st);
@@ -29004,7 +29250,7 @@ body{accent-color:#F9423A!important}
 .eb-cinema-art .eb-cover-brand{display:none!important}
 .eb-cinema-empty-art{display:grid;place-items:center;width:40%;height:54%;color:#F9423A;filter:drop-shadow(0 0 16px rgba(249,66,58,.22));pointer-events:none}
 .eb-cinema-empty-art svg{display:block;width:100%;height:100%}
-.eb-cinema-art:has(.eb-cover-real:not([hidden])) .eb-cinema-empty-art{display:none!important}
+.eb-cinema-art .eb-cover-real:not([hidden]) ~ .eb-cinema-empty-art{display:none!important}
 /* Upload stays one click away, never another sidebar navigation option. */
 #ebUploadTab.eb-hero-upload{display:inline-flex!important;align-items:center!important;gap:8px!important;min-height:36px!important;
   width:auto!important;margin:10px 0 0!important;padding:7px 12px!important;
@@ -31433,7 +31679,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       if (this.ctx !== ctx) { stream.getTracks().forEach(t => t.stop()); const e = new Error('stopped'); e.name = 'AbortError'; throw e; }
       this.stream = stream;
       try { const st = stream.getAudioTracks()[0].getSettings(); if (st.latency > 0 && st.latency < 0.5) this.latencyMs = st.latency * 1000; } catch (_) {}
-      if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (_) {} }
+      if (ctx.state === 'suspended' || ctx.state === 'interrupted') { try { await ctx.resume(); } catch (_) {} }
       if (this.ctx !== ctx) { stream.getTracks().forEach(t => t.stop()); const e = new Error('stopped'); e.name = 'AbortError'; throw e; }
       this.sr = ctx.sampleRate; this.len = Math.ceil(this.sr * RING_SEC);
       this.ring = new Float32Array(this.len); this.written = 0; this.from = 0; this.marks = [];
@@ -31786,13 +32032,11 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
          Use Average BPM ON: Ë = AVG. BPM / 60 × elapsed seconds; Change
          stays gray, as for a loaded file.
      ===================================================================== */
-  const TEMPO_WIN = 8, TEMPO_EVERY_MS = 2000, TRACE_GAP = 6, TRACE_EDGE = 6, TRACE_BAND = 0.08;
-  function sampleSeries(T, V, t) {
-    const n = Math.min(T.length, V.length);
-    if (!n) return NaN; if (t <= T[0]) return V[0]; if (t >= T[n - 1]) return V[n - 1];
-    let lo = 0, hi = n - 1; while (lo + 1 < hi) { const k = (lo + hi) >> 1; if (T[k] <= t) lo = k; else hi = k; }
-    return V[lo] + (t - T[lo]) / ((T[hi] - T[lo]) || 1) * (V[hi] - V[lo]);
-  }
+  const TEMPO_WIN = 8, TEMPO_EVERY_MS = 2000, TRACE_GAP = 6, TRACE_EDGE = TEMPO_WIN / 2, TRACE_NEAR = 0.08;
+  // Keep the same metrical level while admitting a sustained section change.
+  const roomLevelMatches = (value, reference) => validBpm(value) && validBpm(reference)
+    && Math.abs(Math.log2(value / reference)) <= 0.82;
+  const usableReading = (p, reference) => roomLevelMatches(p.bpm, reference) && p.conf >= TEMPO_SUPPORT_MIN;
   const usableTimeline = d => d && Array.isArray(d.times) && Array.isArray(d.actualBeats) && d.times.length > 1 && d.times.length === d.actualBeats.length;
   // BPM shown on the AVG. BPM readout, and the steady rate used where the
   // song wasn't heard (a Profile record's measured mean when there is one).
@@ -31808,7 +32052,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       timing: { source: 'average', kind: 'average', measuredBpm: B, noiseRel: 0 } };
   }
   function cleanTrace(m, B) {
-    const raw = (m.trace || []).filter(p => isFinite(p.bpm) && Math.abs(p.bpm / B - 1) <= TRACE_BAND);
+    const raw = (m.trace || []).filter(p => usableReading(p, B));
     return raw.map((p, i) => {                        // 3-point median: one bad window can't spike the line
       const w = [raw[i - 1], p, raw[i + 1]].filter(q => q && Math.abs(q.pos - p.pos) <= TRACE_GAP).map(q => q.bpm);
       return { pos: p.pos, bpm: median(w), conf: p.conf };
@@ -31838,7 +32082,16 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     const T = pick(times), BP = pick(bpms), CF = pick(conf).map(c => Math.max(0, c)), AB = pick(beats), RF = pick(ref);
     const vals = tr.map(p => p.bpm), measured = vals.length ? median(vals) : Bfill;
     let noiseRel = 0.004;
-    if (vals.length > 3) { const d = []; for (let i = 1; i < vals.length; i++) d.push(Math.abs(vals[i] - vals[i - 1])); noiseRel = Math.max(0.002, 1.4826 * median(d) / Math.SQRT2 / measured); }
+    if (vals.length > 3) {
+      const residuals = [];
+      for (let i = 1; i + 1 < tr.length; i++) {
+        const a = tr[i - 1], b = tr[i], c = tr[i + 1];
+        if (c.pos - b.pos > TRACE_GAP || b.pos - a.pos > TRACE_GAP || !(c.pos > a.pos)) continue;
+        const expected = a.bpm + (c.bpm - a.bpm) * (b.pos - a.pos) / (c.pos - a.pos);
+        residuals.push(Math.abs(b.bpm - expected));
+      }
+      if (residuals.length) noiseRel = Math.max(0.002, 1.2 * median(residuals) / measured);
+    }
     const heardSec = heard * step, lo = vals.length ? Math.min(...vals) : NaN, hi = vals.length ? Math.max(...vals) : NaN;
     const range = vals.length > 1 && hi - lo >= 0.05 ? lo.toFixed(1) + '–' + hi.toFixed(1) + ' BPM' : (vals.length ? measured.toFixed(1) + ' BPM' : '');
     const caption = vals.length
@@ -31861,19 +32114,32 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
      about one beat — the same persistence rule the meter applies to a loaded
      file — so Change lights live and then resets to 00.00. */
   function changeTimeline(m, Bfill, D, timing, Bshow) {
-    const raw = (m.trace || []).filter(p => isFinite(p.bpm) && Math.abs(p.bpm / Bfill - 1) <= TRACE_BAND)
+    const raw = (m.trace || []).filter(p => usableReading(p, Bfill) && Number.isFinite(p.known))
       .slice().sort((a, b) => a.known - b.known);
     if (!raw.length) return null;
-    const vals = raw.map((p, i) => median(raw.slice(Math.max(0, i - 2), i + 1).map(q => q.bpm)));
-    const times = [0], bpms = [vals[0]];
-    for (let k = 1; k < raw.length; k++) {
-      const at = Math.min(D, raw[k].known), hold = Math.min(1, Math.max(0.25, 60 / vals[k])) + 0.01;
-      if (at <= times[times.length - 1]) { bpms[bpms.length - 1] = vals[k]; continue; }
-      times.push(at, Math.min(D, at + 0.001), Math.min(D, at + hold)); bpms.push(vals[k - 1], vals[k], vals[k]);
+    const times = [0], bpms = [Bfill], support = [0];
+    function add(t, b, c) {
+      t = Math.max(0, Math.min(D, t));
+      const last = times.length - 1;
+      if (t < times[last]) return;
+      if (t === times[last]) { bpms[last] = b; support[last] = c; return; }
+      times.push(t); bpms.push(b); support.push(c);
     }
-    if (times[times.length - 1] < D) { times.push(D); bpms.push(vals[vals.length - 1]); }
+    for (let i = 0; i < raw.length; i++) {
+      const p = raw[i], at = p.known;
+      if (at < 0 || at > D) continue;
+      const recent = raw.slice(Math.max(0, i - 2), i + 1).filter(q => at - q.known <= TRACE_GAP);
+      const b = median(recent.map(q => q.bpm));
+      const hold = Math.min(1.5, Math.max(0.25, 60 / b)) + 0.005;
+      const next = i + 1 < raw.length ? raw[i + 1].known : Infinity;
+      add(at - 0.001, bpms[bpms.length - 1], recent.length > 1 ? support[support.length - 1] : 0);
+      add(at, b, p.conf);
+      add(Math.min(at + hold, next - 0.002), b, p.conf);
+      if (next - at > TRACE_GAP) add(at + hold + 0.002, b, 0);
+    }
+    add(D, bpms[bpms.length - 1], 0);
     return { sensor: true, duration: D, globalBpm: Bshow, measuredBpm: timing.measuredBpm, timing,
-      times, tempoTraceBpms: bpms, localBpms: bpms, profileTimes: times, profileBpms: bpms };
+      times, tempoTraceBpms: bpms, localBpms: bpms, profileTimes: times, profileBpms: bpms, localConfidences: support };
   }
   // The timeline the graph, Change meter and readouts use for the current song.
   function sensorTimeline(m) {
@@ -31893,14 +32159,16 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     const d = sensorTimeline(m);
     if (!d) return { bpm: NaN, beats: () => NaN, total: NaN };
     const bpm = m.source === 'local' ? Number(g(() => getActiveBpm(), NaN)) : d.globalBpm;
-    return { bpm, beats: t => sampleSeries(d.times, d.actualBeats, t), total: validDur(m.duration) ? d.actualBeats[d.actualBeats.length - 1] : NaN };
+    return { bpm, beats: t => tempoMapPosition(d, clamp(t, 0, d.duration)), total: validDur(m.duration) ? d.actualBeats[d.actualBeats.length - 1] : NaN };
   }
   function setRate(m, bpm, kind, total, label) {
     const old = shownBpm(m);
     m.tempo = { kind, bpm, rate: bpm / 60, total: isFinite(total) ? total : NaN, label };
     // Room readings were taken around the old figure; a different metrical
     // level (half/double time) can't be mixed into the same line.
-    if (isFinite(old) && Math.abs(bpm / old - 1) > TRACE_BAND) { m.trace = []; m.traceVer = (m.traceVer || 0) + 1; }
+    if (validBpm(old) && !roomLevelMatches(old, bpm)) {
+      m.trace = []; m.pendingTempo = null; m.traceVer = (m.traceVer || 0) + 1;
+    }
   }
 
   // Tempo inside one window of room sound, kept near the song's known BPM.
@@ -31910,17 +32178,44 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     for (let k = 1; k <= 4; k++) { if (l * k > ACF_MAX - 2) break; const p = peakNear(l * k); if (acf[Math.round(p)] > 0) { sum += p; wsum += k; } }
     return wsum ? sum / wsum : l;
   }
-  function localTempo(acf, B) {
-    const lo = Math.max(2, Math.floor(FPS * 60 / (B * (1 + TRACE_BAND)))), hi = Math.min(ACF_MAX - 1, Math.ceil(FPS * 60 / (B * (1 - TRACE_BAND))));
-    let bi = -1, bv = -Infinity;
-    for (let l = lo; l <= hi; l++) {
-      let s = acf[l]; if (2 * l <= ACF_MAX) s += 0.5 * acf[2 * l]; if (4 * l <= ACF_MAX) s += 0.25 * acf[4 * l];
-      if (s > bv) { bv = s; bi = l; }
+  function localTempo(acf, reference, previous) {
+    const span = Math.pow(2, 0.82);
+    const lo = Math.max(2, Math.floor(FPS * 60 / Math.min(300, reference * span)));
+    const hi = Math.min(ACF_MAX - 1, Math.ceil(FPS * 60 / Math.max(40, reference / span)));
+    let best = -Infinity, winner = -1;
+    for (let lag = lo; lag <= hi; lag++) {
+      const corr = acf[lag], bpm = 60 * FPS / lag;
+      if (corr < 0.08 || corr < acf[lag - 1] || corr < acf[lag + 1] || !roomLevelMatches(bpm, reference)) continue;
+      let score = corr;
+      if (2 * lag <= ACF_MAX) score += 0.38 * Math.max(0, acf[2 * lag]);
+      if (3 * lag <= ACF_MAX) score += 0.12 * Math.max(0, acf[3 * lag]);
+      score -= 0.30 * Math.abs(Math.log2(bpm / previous)) + 0.15 * Math.pow(Math.log2(bpm / reference), 2);
+      if (score > best) { best = score; winner = lag; }
     }
-    if (bi < 0 || !(acf[bi] > 0.06)) return null;
-    const bpm = 60 * FPS / refineLag(acf, bi);
-    if (!(Math.abs(bpm / B - 1) <= TRACE_BAND)) return null;
-    return { bpm, conf: Math.max(0, Math.min(1, (acf[bi] - 0.06) / 0.3)) };
+    if (winner < 0) return null;
+    const bpm = 60 * FPS / refineLag(acf, winner);
+    if (!roomLevelMatches(bpm, reference)) return null;
+    return { bpm, conf: Math.max(0, Math.min(1, (acf[winner] - 0.06) / 0.30)) };
+  }
+
+  function confirmedRoomTempo(m, acf, reference, pos) {
+    const trace = m.trace || [];
+    let previous = reference;
+    for (let i = trace.length - 1; i >= 0; i--) {
+      if (trace[i].pos > pos) continue;
+      if (pos - trace[i].pos <= TRACE_GAP && usableReading(trace[i], reference)) previous = trace[i].bpm;
+      break;
+    }
+    const reading = localTempo(acf, reference, previous);
+    if (!reading || reading.conf < TEMPO_SUPPORT_MIN) { m.pendingTempo = null; return null; }
+    if (Math.abs(reading.bpm / previous - 1) <= TRACE_NEAR) { m.pendingTempo = null; return reading; }
+    const pending = m.pendingTempo;
+    m.pendingTempo = { pos, bpm: reading.bpm };
+    // Two neighboring, separately measured windows must agree on a large move.
+    if (!pending || pos - pending.pos < 1 || pos - pending.pos > TRACE_GAP
+        || Math.abs(reading.bpm / pending.bpm - 1) > 0.045) return null;
+    m.pendingTempo = null;
+    return reading;
   }
   function addTrace(m, pos, bpm, conf, known) {
     const tr = m.trace || (m.trace = []), item = { pos, bpm, conf, known: isFinite(known) ? known : pos };
@@ -31948,7 +32243,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
               const acf = envAcf(env);
               const initialBpm = validBpm(B) ? B : bpmFromAcf(acf);
               if (!validBpm(B) && validBpm(initialBpm)) setRate(m, initialBpm, 'room', NaN, 'tempo heard nearby');
-              const r = validBpm(initialBpm) ? localTempo(acf, initialBpm) : null;
+              const r = validBpm(initialBpm) ? confirmedRoomTempo(m, acf, initialBpm, center) : null;
               if (r && center > 0 && (!validDur(m.duration) || center < m.duration)) addTrace(m, center, r.bpm, r.conf, center + TEMPO_WIN / 2);
             }
           }
@@ -33033,7 +33328,7 @@ html.eb-sensor-on #ebHeroArt.eb-sensor-art-loading .eb-cinema-empty-art{animatio
   }
 
   /* ---------- 2. beat data ---------- */
-  /* Local tempo over two bars (9 beats) at every beat, then the player's own
+  /* Local tempo over eight beat intervals at every beat, then the player's own
      signed-flux rule: a change counts only when it clears the noise gate and
      holds; flux is the mean of the accepted signed changes. */
   function fluxFromBeats(beats,refBpm){
@@ -33055,21 +33350,12 @@ html.eb-sensor-on #ebHeroArt.eb-sensor-art-loading .eb-cinema-empty-art{animatio
       times.push(t[c]); bpms.push(m*60/slope); noise.push(Math.sqrt(e2/7)/slope);
     }
     if(bpms.length<24) return null;
-    var noiseRel=median(noise), sorted=bpms.slice().sort(function(a,b){return a-b;});
-    var center=refBpm>0 ? refBpm : sorted[sorted.length>>1];
-    var minChange=noiseRel>0 && center>0 ? Math.max(.5,Math.ceil(3*noiseRel*center*20)/20) : .5;
-    var held=null,cand=null,total=0,count=0;
-    for(var q=0;q<times.length;q++){
-      var tt=times[q], b=bpms[q];
-      if(held===null){ held=b; continue; }
-      var d=b-held;
-      if(Math.abs(d)>=minChange-1e-9){
-        var dir=Math.sign(d);
-        if(!cand || cand.direction!==dir) cand={time:tt,direction:dir};
-        if(tt-cand.time>=Math.max(.25,Math.min(1,60/b))){ total+=d; count++; held=b; cand=null; }
-      } else cand=null;
-    }
-    var flux=count ? Math.round(total/count*100)/100 : 0;
+    var noiseRel = median(noise);
+    var events = getTempoChangeEvents({ times: times, localBpms: bpms,
+      localConfidences: times.map(function () { return 1; }),
+      timing: { source: 'beats', kind: 'annotated', noiseRel: noiseRel } }).slice(1);
+    var count = events.length;
+    var flux = count ? Math.round(events.reduce(function (sum, e) { return sum + e.delta; }, 0) / count * 100) / 100 : 0;
     return {flux:flux===0?0:flux, changes:count, noise:noiseRel};
   }
 
@@ -33667,21 +33953,12 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
     return isFinite(v) && v > 0 ? v : 120;
   }
   function timeToBeat(t) {
-    var d = arrays(); if (!d) return Math.max(0, t * fallbackBpm() / 60);
-    var T = d.times, B = d.actualBeats, n = T.length;
-    if (t <= T[0]) return B[0] || 0;
-    if (t >= T[n - 1]) { var z = Number(d.localBpms && d.localBpms[n - 1]) || Number(d.globalBpm) || fallbackBpm(); return Math.max(0, B[n - 1] + (t - T[n - 1]) * z / 60); }
-    var lo = 0, hi = n - 1; while (lo + 1 < hi) { var m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; }
-    var f = (t - T[lo]) / (T[hi] - T[lo] || 1); return B[lo] + f * (B[hi] - B[lo]);
+    var d = arrays();
+    return d ? tempoMapPosition(d, t) : Math.max(0, t * fallbackBpm() / 60);
   }
   function beatToTime(b) {
-    b = Math.max(0, Number(b) || 0);
-    var d = arrays(); if (!d) return b * 60 / fallbackBpm();
-    var T = d.times, B = d.actualBeats, n = B.length;
-    if (b <= B[0]) return T[0] || 0;
-    if (b >= B[n - 1]) { var z = Number(d.localBpms && d.localBpms[n - 1]) || Number(d.globalBpm) || fallbackBpm(); return T[n - 1] + (b - B[n - 1]) * 60 / Math.max(1, z); }
-    var lo = 0, hi = n - 1; while (lo + 1 < hi) { var m = (lo + hi) >> 1; if (B[m] <= b) lo = m; else hi = m; }
-    var f = (b - B[lo]) / (B[hi] - B[lo] || 1); return T[lo] + f * (T[hi] - T[lo]);
+    var d = arrays();
+    return d ? tempoMapPosition(d, Math.max(0, b), true) : Math.max(0, b) * 60 / fallbackBpm();
   }
   function duration() {
     var d = getData(), x = d && Number(d.duration);
@@ -33739,37 +34016,11 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
   /* ------------------------------------------------------------------
      2. Change meter: the same event rule as the main meter
      ------------------------------------------------------------------ */
-  var CHANGE_MIN = 0.5, CHANGE_PULSE = 1.25;
-  function changeThreshold(data, B) {
-    var noise = data && data.timing ? Number(data.timing.noiseRel) : NaN;
-    if (!(noise > 0)) return CHANGE_MIN;
-    var vals = Array.prototype.slice.call(B).filter(function (v) { return isFinite(v) && v > 0; }).sort(function (a, b) { return a - b; });
-    if (!vals.length) return CHANGE_MIN;
-    var mid = Number(data.measuredBpm) > 0 ? Number(data.measuredBpm) : vals[vals.length >> 1];
-    return Math.max(CHANGE_MIN, Math.ceil(3 * noise * mid * 20) / 20);
-  }
-  function buildChangeEvents(data) {
-    var out = [], series = g(function () { return getTrackTempoSeries(data); }, null);
-    if (!series || !data || data.tempoMode === 'average') return out;
-    var T = series.times, B = series.bpms, n = Math.min(T.length, B.length);
-    var minChange = changeThreshold(data, B), held = null, cand = null;
-    for (var i = 0; i < n; i++) {
-      var t = Number(T[i]), b = Number(B[i]);
-      if (!isFinite(t) || !isFinite(b) || b <= 0) continue;
-      if (held === null) { out.push({ time: Math.max(0, t), bpm: b, delta: 0, from: b }); held = b; continue; }
-      var delta = b - held;
-      if (Math.abs(delta) >= minChange - 1e-9) {
-        var dir = Math.sign(delta);
-        if (!cand || cand.dir !== dir) cand = { time: t, dir: dir };
-        if (t - cand.time >= cl(60 / b, 0.25, 1)) { out.push({ time: Math.max(0, t), bpm: b, delta: delta, from: held }); held = b; cand = null; }
-      } else cand = null;
-    }
-    return out;
-  }
+  var CHANGE_PULSE = 1.25;
   var chg = { src: null, ev: [] };
   function changeData() {
     var sv = sensorView(), data = sv ? (sv.change || null) : getData();
-    if (data !== chg.src) { chg.src = data; chg.ev = buildChangeEvents(data); }
+    if (data !== chg.src) { chg.src = data; chg.ev = getTempoChangeEvents(data); }
     return data;
   }
   function changeAt(ev, t) {
@@ -34313,11 +34564,11 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
           setT(r.dl, '00.00'); bpSet(r, '000.00'); r.sp.classList.remove('on'); r.sm.classList.remove('on');
         } else {
           var e2 = changeAt(ev, t), live = !!(e2 && e2.delta !== 0 && t >= e2.time && t < e2.time + CHANGE_PULSE);
-          face.classList.remove('is-idle'); face.classList.toggle('is-changed', live); face.classList.add('is-bpm');
+          face.classList.remove('is-idle'); face.classList.toggle('is-changed', live); face.classList.toggle('is-bpm', getTrackTempoSupportAtTime(t, data) >= TEMPO_SUPPORT_MIN);
           setT(r.dl, padW(live ? e2.delta : 0, 5)); bpSet(r, padW(cur, 6));
           r.sp.classList.toggle('on', live && e2.delta > 0); r.sm.classList.toggle('on', live && e2.delta < 0);
         }
-        if (st && r.hint) { setT(r.hint, 'No tempo changes in this song'); setH(r.pager, ''); }
+        if (st && r.hint) { setT(r.hint, 'No confirmed tempo changes'); setH(r.pager, ''); }
       }
       /* Rectangular screens: while STEP is on the edge, the change value moves
          one BPM digit left — its last digit over BPM's first decimal — so the
@@ -34338,15 +34589,14 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
       gcache.data = data; gcache.dur = dur; gcache.pts = null;
       var series = data ? g(function () { return getTrackTempoSeries(data); }, null) : null;
       if (series && dur > 0) {
-        var pts = [], lo = Infinity, hi = -Infinity, sum = 0, cnt = 0, N = 180;
-        for (var i = 0; i <= N; i++) {
-          var tt = dur * i / N, b = g(function () { return getTrackTempoAtTime(tt, data); }, NaN);
-          if (!isFinite(b) || b <= 0) continue;
-          pts.push([tt, b]); lo = Math.min(lo, b); hi = Math.max(hi, b); sum += b; cnt++;
+        var pts = [];
+        for (var i = 0; i < series.times.length; i++) {
+          var b = series.bpms[i], tt = series.times[i];
+          if (isFinite(b) && b > 0) pts.push([tt, b, data.tempoMode === 'average' || getTrackTempoSupportAtTime(tt, data) >= TEMPO_SUPPORT_MIN]);
         }
         if (pts.length > 1) {
-          if (hi - lo < 1.2) { var m = (hi + lo) / 2; lo = m - 0.6; hi = m + 0.6; }
-          gcache.pts = pts; gcache.lo = lo; gcache.hi = hi; gcache.avg = sum / cnt;
+          var range = tempoPlotRange(data, series.bpms);
+          gcache.pts = pts; gcache.lo = range[0]; gcache.hi = range[1]; gcache.avg = data.globalBpm;
         }
       }
     }
@@ -34356,10 +34606,22 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
     ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = '#83858c'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(0, ya); ctx.lineTo(w, ya); ctx.stroke(); ctx.restore();
     if (!gcache.pts) return;
     var nx = X(cl(t, 0, dur)), P = gcache.pts;
-    var path = function (from, to) { ctx.beginPath(); var started = false; for (var j = 0; j < P.length; j++) { var x = X(P[j][0]); if (x < from - 3 || x > to + 3) continue; var y = Y(P[j][1]); if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y); } };
-    ctx.lineJoin = 'round';
-    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, nx, h); ctx.clip(); path(0, nx); ctx.strokeStyle = RED; ctx.lineWidth = 2.6; ctx.stroke(); ctx.restore();
-    ctx.save(); ctx.beginPath(); ctx.rect(nx, 0, w - nx, h); ctx.clip(); path(nx, w); ctx.strokeStyle = '#7a2520'; ctx.lineWidth = 2.2; ctx.stroke(); ctx.restore();
+    function strokeTempo(color, width) {
+      var lastSolid = null;
+      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round';
+      for (var i = 1; i < P.length; i++) {
+        var solid = P[i - 1][2] && P[i][2];
+        if (solid !== lastSolid) {
+          if (lastSolid !== null) ctx.stroke();
+          ctx.setLineDash(solid ? [] : [2, 3]); ctx.beginPath();
+          ctx.moveTo(X(P[i - 1][0]), Y(P[i - 1][1])); lastSolid = solid;
+        }
+        ctx.lineTo(X(P[i][0]), Y(P[i][1]));
+      }
+      if (lastSolid !== null) ctx.stroke();
+    }
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, nx, h); ctx.clip(); strokeTempo(RED, 2.6); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(nx, 0, w - nx, h); ctx.clip(); strokeTempo('#7a2520', 2.2); ctx.restore();
     if (steps) {
       ctx.fillStyle = 'rgba(182,183,188,.45)'; ctx.fillRect(nx - 0.6, 4, 1.2, h - 8);
       ctx.fillStyle = '#b6b7bc';
@@ -36259,7 +36521,7 @@ html body #songDbSection.eb-db-dropping{box-shadow:inset 0 0 0 2px rgba(var(--eb
         step('Measuring BPM');
         await pause(30);
         var analysis = analyze(buffer);
-        var measured = Number(analysis && (analysis.globalBpm || analysis.measuredBpm));
+        var measured = audioEstimateBpm(analysis);
         var duration = Number(buffer.duration);
 
         if (!id && navigator.onLine) {
@@ -36294,6 +36556,8 @@ html body #songDbSection.eb-db-dropping{box-shadow:inset 0 0 0 2px rgba(var(--eb
         step('Checking known BPM');
         var known = await knownBpmFor(id.artist, id.title, buffer);
         var bpm = known ? known.bpm : measured;
+        if (!Number.isFinite(bpm)) return { state: 'invalid', artist: id.artist, title: id.title, durationSec: duration,
+          why: 'No clear beat. Enter a BPM in the player to save this song.' };
         var r = A.fileBatchTrack({ artist: id.artist, title: id.title, album: id.album || album, fileName: file.name, bpm: bpm, durationSec: duration });
         var shown = st ? { artist: st.artist, title: st.title } : { artist: id.artist, title: id.title };
         var why = [];
@@ -36317,5 +36581,30 @@ html body #songDbSection.eb-db-dropping{box-shadow:inset 0 0 0 2px rgba(var(--eb
   else init();
 })();
 </script>
+
+<style id="eb-viewport-and-controls">
+/* Let short screens reach the navigation footer and keep the keyboard from covering dialog actions. */
+@media (min-width:981px), (min-width:901px) and (min-height:511px) {
+  html body #mainContent.wrap > .app-header { overflow-y:auto !important; overflow-x:hidden !important; }
+}
+@media (pointer:coarse) and (max-width:1024px) {
+  html:not(.eb-watch) body #mainContent input:not([type]), html:not(.eb-watch) body #mainContent input[type="number"],
+  html:not(.eb-watch) body #mainContent input[type="text"], html:not(.eb-watch) body #mainContent input[type="search"],
+  html:not(.eb-watch) body #mainContent textarea, html:not(.eb-watch) body #mainContent select,
+  html:not(.eb-watch) body [role="dialog"] input:not([type="checkbox"]):not([type="range"]):not([type="file"]),
+  html:not(.eb-watch) body [role="dialog"] textarea {font-size:16px !important;}
+}
+@media (max-width:900px), (max-width:980px) and (max-height:510px) and (orientation:landscape) {
+  html:not(.eb-watch) body #mainContent.wrap {
+    padding-left:max(10px,env(safe-area-inset-left)) !important;
+    padding-right:max(10px,env(safe-area-inset-right)) !important;
+    padding-bottom:max(24px,env(safe-area-inset-bottom)) !important;
+  }
+}
+@supports not (height:100dvh) {
+  .premium-dialog,.premium-dialog-scroll {max-height:calc(100vh - 32px);}
+}
+</style>
+
 </body>
 </html>
