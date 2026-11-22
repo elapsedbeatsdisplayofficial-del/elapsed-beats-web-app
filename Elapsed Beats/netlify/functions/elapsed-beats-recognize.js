@@ -10,6 +10,16 @@
  * isrc is the recording's ISRC when the provider sends one (else ''). The
  * widget uses it to look the exact recording up on TIDAL.
  *
+ * Which release, which credit: ACRCloud usually returns several releases of
+ * the recording it heard, often with the same score: the artist's own single
+ * or album, compilations, and re-uploads credited to karaoke, tribute,
+ * "sped up" or cover labels, sometimes with the artist misspelled. The
+ * answer is the release most releases agree on, never a cover/karaoke/
+ * tribute credit when a proper one is there, preferring releases linked to
+ * Spotify/Deezer and older (original) releases. Artist names come from the
+ * linked Spotify/Deezer entry when it names the same artist (their spelling
+ * is the canonical one). Several artists are joined with " & ".
+ *
  * Providers (set in Netlify → Site configuration → Environment variables,
  * then redeploy — functions only see variables from their own deploy):
  *   ACRCloud (preferred — millisecond offsets):
@@ -128,6 +138,97 @@ const ACR_CODES = {
   3015: ['quota', 'ACRCloud requests-per-second limit reached']
 };
 
+/* ---------- choosing the right release and spelling ---------- */
+// Credits, titles, albums and labels of karaoke / tribute / cover / re-upload releases.
+const COVERISH = /\b(?:karaoke|tribute|made famous|in the style of|originally (?:performed|recorded)|as performed by|sound[- ]?alike|cover(?:s|ed)?\b|cover (?:band|crew|stars|masters|nation|version)|hit crew|hit makers|hit masters|party hits|countdown (?:singers|kids|dance)|workout|fitness|cardio|lullab\w*|rockabye|music box|piano tribute|instrumental versions|backing tracks?|studio (?:allstars|all[- ]stars|band|musicians|group)|starlite|sing[- ]?along|ameritz|sunfly|zoom karaoke|nightcore|sped[- ]?up|slowed|8d audio)\b/i;
+const GENERIC_ARTIST = /^(?:various(?: artists)?|va|v\.a\.|unknown(?: artist)?|artist|anonymous|soundtrack|original soundtrack|ost|compilation)$/i;
+const akey = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
+  .replace(/^the\s+/, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '');
+// Unicode-aware keys (titles and names in Devanagari, Tamil etc. keep their letters).
+const ukey = (s) => String(s || '').toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '');
+const titleKey = (s) => ukey(String(s || '').replace(/\s*[([][^)\]]*[)\]]/g, '').replace(/\s+-\s+.*$/, '').replace(/\s+(?:feat\.?|ft\.?|featuring|with)\s+.*$/i, ''));
+const leadName = (s) => String(s || '').split(/\s*(?:&|,|;|\/|\bfeat\.?\s|\bft\.?\s|\bwith\s|\bx\s)\s*/i)[0];
+function differentArtist(a, b) {
+  a = leadName(a); b = leadName(b);
+  const A = akey(a), B = akey(b);
+  if (A && B) return !sameArtistSpelling(A, B);
+  return ukey(a) !== ukey(b);
+}
+function editDistance(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]; let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+// The same artist written two ways ("Beyonce" / "Beyoncé", "D Cup" / "DCUP", a typo).
+function sameArtistSpelling(a, b) {
+  const x = akey(a), y = akey(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const len = Math.max(x.length, y.length), max = len >= 10 ? 2 : len >= 5 ? 1 : 0;
+  return max > 0 && x[0] === y[0] && editDistance(x, y, max) <= max;
+}
+const namesOf = (list) => (Array.isArray(list) ? list : []).map(a => a && String(a.name || '').trim()).filter(Boolean);
+const acrArtists = (m) => namesOf(m && m.artists);
+// Artist names of the Spotify (else Deezer) entry ACRCloud linked to this release.
+function linkedArtists(m) {
+  const ex = (m && m.external_metadata) || {};
+  for (const k of ['spotify', 'deezer']) {
+    const v = ex[k], entry = Array.isArray(v) ? v[0] : v;
+    const names = namesOf(entry && entry.artists);
+    if (names.length) return names;
+  }
+  return [];
+}
+const generic = (names) => !names.length || names.every(n => GENERIC_ARTIST.test(n));
+const coverish = (m, names) => COVERISH.test(names.join(' ')) || COVERISH.test(String(m.title || ''))
+  || COVERISH.test(String((m.album && m.album.name) || '')) || COVERISH.test(String(m.label || ''));
+// The credit to show: the linked Spotify/Deezer spelling when it is the same
+// artist (or when ACRCloud's own credit is generic or a cover label).
+function bestArtists(m) {
+  const own = acrArtists(m), linked = linkedArtists(m);
+  if (!linked.length) return own;
+  if (generic(own) || (COVERISH.test(own.join(' ')) && !COVERISH.test(linked.join(' ')))) return linked;
+  return sameArtistSpelling(own[0], linked[0]) ? linked : own;
+}
+function chooseRelease(list) {
+  const items = (Array.isArray(list) ? list : []).filter(m => m && m.title);
+  if (!items.length) return null;
+  const top = Math.max(...items.map(m => num(m.score) || 0));
+  const pool = items.filter(m => (num(m.score) || 0) >= top - 5);      // the same recording on several releases
+  const votes = new Map();
+  pool.forEach(m => {
+    const names = bestArtists(m);
+    if (generic(names) || coverish(m, names)) return;
+    const k = akey(names[0]);
+    const near = [...votes.keys()].find(v => sameArtistSpelling(v, k));
+    votes.set(near || k, (votes.get(near || k) || 0) + 1);
+  });
+  const voteFor = (names) => { const k = akey(names[0]); const near = [...votes.keys()].find(v => sameArtistSpelling(v, k)); return near ? votes.get(near) : 0; };
+  const rank = (m) => {
+    const names = bestArtists(m);
+    let r = num(m.score) || 0;
+    if (coverish(m, names)) r -= 40;
+    if (generic(names)) r -= 30;
+    r += 4 * voteFor(names);
+    if (linkedArtists(m).length) r += 6;
+    if (isrcOf(m.external_ids && m.external_ids.isrc)) r += 2;
+    const y = Number(yearOf(m.release_date));
+    if (y) r += Math.max(0, 2035 - y) * 0.05;                         // the original predates reissues and covers
+    return r;
+  };
+  return pool.map((m, i) => ({ m, r: rank(m), i })).sort((a, b) => (b.r - a.r) || (a.i - b.i))[0].m;
+}
+const joinArtists = (names) => names.join(' & ');
+
 async function acrcloud(acr, audio, sampleSec) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const toSign = ['POST', '/v1/identify', acr.key, 'audio', '1', timestamp].join('\n');
@@ -157,7 +258,7 @@ async function acrcloud(acr, audio, sampleSec) {
     throw new ProviderError(known ? `${known[1]} (code ${code})` : `ACRCloud ${code}: ${data && data.status && data.status.msg || 'HTTP ' + res.status}`, known ? known[0] : 'unavailable');
   }
   const list = (data.metadata && data.metadata.music) || [];
-  const m = list.slice().sort((a, b) => num(b.score) - num(a.score))[0];
+  const m = chooseRelease(list);
   if (!m || !m.title) return { status: 'no_match' };
 
   // Song position where the sample began. Prefer the matched-segment offsets
@@ -170,11 +271,24 @@ async function acrcloud(acr, audio, sampleSec) {
   }
   if (!Number.isFinite(positionMs)) return { status: 'no_match' };
 
-  const artists = (m.artists || []).map(a => a && a.name).filter(Boolean);
+  // A close call: another song (a different title, or the same title by a
+  // different artist) scored nearly as well as the one chosen. Raga- and
+  // drone-based music, and many recordings of the same classical piece, match
+  // each other's phrases like this. The app then waits for a second sample to
+  // agree before it shows a song.
+  const top = num(m.score) || 0, mine = titleKey(m.title), mineArtist = bestArtists(m)[0] || '';
+  // Karaoke/cover/tribute re-uploads and "Various Artists" entries never make it a close call.
+  const ambiguous = list.some(x => {
+    if (!x || x === m || !x.title || (num(x.score) || 0) < top - 10) return false;
+    const names = bestArtists(x);
+    if (coverish(x, names) || generic(names)) return false;
+    return titleKey(x.title) !== mine || ((num(x.score) || 0) >= top - 5 && differentArtist(names[0] || '', mineArtist));
+  });
+
   return {
-    status: 'ok', provider: 'ACRCloud',
+    status: 'ok', provider: 'ACRCloud', ambiguous,
     title: String(m.title),
-    artist: artists.length > 2 ? artists.join(', ') : artists.join(' & '),
+    artist: joinArtists(bestArtists(m)),
     album: m.album && m.album.name ? String(m.album.name) : '',
     year: yearOf(m.release_date),
     genre: (m.genres && m.genres[0] && m.genres[0].name) ? String(m.genres[0].name) : '',
@@ -203,10 +317,16 @@ async function audd(token, audio) {
                     : tc.length === 3 && tc.every(Number.isFinite) ? tc[0] * 3600 + tc[1] * 60 + tc[2] : NaN;
   if (!Number.isFinite(positionSec)) return { status: 'no_match' };
   const durMs = num(r.spotify && r.spotify.duration_ms) || num(r.apple_music && r.apple_music.durationInMillis);
+  // Canonical spelling from the linked Spotify / Apple Music entry when it is the same artist.
+  let artist = String(r.artist || '').trim();
+  const spotifyNames = namesOf(r.spotify && r.spotify.artists);
+  const appleName = String(r.apple_music && r.apple_music.artistName || '').trim();
+  if (spotifyNames.length && (!artist || GENERIC_ARTIST.test(artist) || sameArtistSpelling(artist.split(/\s*(?:&|,|;|\/| feat\.? | ft\.? )\s*/i)[0], spotifyNames[0]))) artist = joinArtists(spotifyNames);
+  else if (appleName && (!artist || GENERIC_ARTIST.test(artist) || sameArtistSpelling(artist, appleName))) artist = appleName;
   const genre = r.apple_music && Array.isArray(r.apple_music.genreNames) ? r.apple_music.genreNames.find(g => g && g !== 'Music') || '' : '';
   return {
     status: 'ok', provider: 'AudD',
-    title: String(r.title), artist: String(r.artist || ''), album: String(r.album || ''),
+    title: String(r.title), artist, album: String(r.album || ''),
     year: yearOf(r.release_date), genre: String(genre),
     durationSec: durMs > 0 ? durMs / 1000 : null,
     positionSec: Math.max(0, positionSec),
