@@ -213,9 +213,15 @@ function chooseRelease(list) {
     votes.set(near || k, (votes.get(near || k) || 0) + 1);
   });
   const voteFor = (names) => { const k = akey(names[0]); const near = [...votes.keys()].find(v => sameArtistSpelling(v, k)); return near ? votes.get(near) : 0; };
+  const isrcCount = new Map();
+  items.forEach(m => { const k = isrcOf(m.external_ids && m.external_ids.isrc); if (k) isrcCount.set(k, (isrcCount.get(k) || 0) + 1); });
   const rank = (m) => {
     const names = bestArtists(m);
     let r = num(m.score) || 0;
+    const kind = versionKind(m.title);
+    if (kind === 'part') r -= 30; else if (kind === 'remix') r -= 14;
+    const ik = isrcOf(m.external_ids && m.external_ids.isrc);
+    if (ik) r += 1.5 * Math.min(4, (isrcCount.get(ik) || 1) - 1);
     if (coverish(m, names)) r -= 40;
     if (generic(names)) r -= 30;
     r += 4 * voteFor(names);
@@ -225,9 +231,74 @@ function chooseRelease(list) {
     if (y) r += Math.max(0, 2035 - y) * 0.05;                         // the original predates reissues and covers
     return r;
   };
-  return pool.map((m, i) => ({ m, r: rank(m), i })).sort((a, b) => (b.r - a.r) || (a.i - b.i))[0].m;
+  const order = (list) => list.map((m, i) => ({ m, r: rank(m), i })).sort((a, b) => (b.r - a.r) || (a.i - b.i));
+  let best = order(pool)[0].m;
+  // A remix or a part won: the song itself, when the list has it close enough, takes its place.
+  // A part (outro, intro…) always gives way; a remix only when the song itself
+  // scored nearly as well (within 8) — a remix ACRCloud clearly prefers is what's playing.
+  const bestKind = versionKind(best.title);
+  if (bestKind !== 'original') {
+    const floor = bestKind === 'part' ? top - 15 : Math.max(top - 15, (num(best.score) || 0) - 8);
+    const originals = items.filter(x => x !== best && (num(x.score) || 0) >= floor && versionKind(x.title) === 'original'
+      && !coverish(x, bestArtists(x)) && !generic(bestArtists(x)) && sameSong(best, x));
+    if (originals.length) best = order(originals)[0].m;
+  }
+  return best;
 }
 const joinArtists = (names) => names.join(' & ');
+
+/* ---------- originals before remixes ---------- */
+// What a release is: the song itself, a remix/edit of it, or a part built from
+// it (an album's outro, intro, interlude…). Only the bracketed part of a title
+// or what follows " - " names a version; "Original Mix", "Radio Edit" and
+// remasters are the song itself.
+const PART_RX = /\b(?:outro|intro|interlude|reprise|skit|medley|megamix|mash-?up|snippet|teaser|segue|transition)\b/i;
+const REMIX_RX = /\b(?:remix(?:ed)?|rmx|re-?mix|bootleg|rework|re-?edit|flip|vip|dub|mix|edit|extended|instrumental|acapella|a cappella|sped[- ]?up|slowed|nightcore|reverb|8d|live|acoustic|unplugged|demo|version)\b/i;
+const ORIGINAL_RX = /\b(?:original(?: mix| version)?|radio (?:edit|version|mix)|single (?:edit|version|mix)|album version|remaster(?:ed)?|\d{4} remaster(?:ed)?|explicit|clean|mono|stereo)\b/i;
+function versionKind(title) {
+  const t = String(title || '');
+  if (PART_RX.test(t)) return 'part';
+  const tags = ((t.match(/[([][^)\]]*[)\]]/g) || []).join(' ') + ' ' + ((/\s[-–—]\s(.*)$/.exec(t) || [])[1] || '')).trim();
+  if (!tags) return 'original';
+  const named = tags.replace(/\b(?:feat\.?|ft\.?|featuring|with)\b[^)\]]*/gi, ' ');
+  if (!REMIX_RX.test(named)) return 'original';
+  if (ORIGINAL_RX.test(named) && !/\b(?:remix|rmx|bootleg|rework|vip|dub|club|extended|live|acoustic|instrumental)\b/i.test(named)) return 'original';
+  return 'remix';
+}
+const initialsOf = (title) => (String(title || '').replace(/[([][^)\]]*[)\]]/g, ' ').match(/[\p{L}\p{N}]+/gu) || []).map(w => w[0]).join('').toLowerCase();
+const tagOf = (title) => ukey((String(title || '').match(/[([]([^)\]]+)[)\]]/) || [])[1] || '');
+// Two releases of one song (any version): same title and lead artist, or a
+// part whose tag spells the song's initials ("Outro (Wnsa)" → We No Speak Americano).
+function sameSong(a, b) {
+  if (titleKey(a.title) === titleKey(b.title)) return !differentArtist(bestArtists(a)[0] || '', bestArtists(b)[0] || '');
+  const ta = tagOf(a.title), tb = tagOf(b.title);
+  return (ta.length >= 3 && ta === initialsOf(b.title)) || (tb.length >= 3 && tb === initialsOf(a.title));
+}
+// Song position where the sample began (matched-segment offsets, else play_offset_ms at the sample's end).
+function positionMsOf(x, sampleSec) {
+  const dbBegin = num(x.db_begin_time_offset_ms), sBegin = num(x.sample_begin_time_offset_ms);
+  let ms = (Number.isFinite(dbBegin) && Number.isFinite(sBegin)) ? dbBegin - sBegin : NaN;
+  if (!Number.isFinite(ms) && Number.isFinite(num(x.play_offset_ms)) && Number.isFinite(sampleSec)) ms = num(x.play_offset_ms) - sampleSec * 1000;
+  return ms;
+}
+
+// The song's other versions in the same answer (remixes, edits, parts), each with its own position.
+function versionsOf(m, list, sampleSec) {
+  const out = [], seen = new Set([ukey(m.title) + '|' + akey(bestArtists(m)[0] || '')]);
+  for (const x of list) {
+    if (!x || x === m || !x.title || out.length >= 4) continue;
+    const names = bestArtists(x);
+    if (coverish(x, names) || generic(names) || !sameSong(m, x)) continue;
+    const key = ukey(x.title) + '|' + akey(names[0] || '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const pos = positionMsOf(x, sampleSec);
+    out.push({ title: String(x.title), artist: joinArtists(names), kind: versionKind(x.title), score: num(x.score),
+      positionSec: Number.isFinite(pos) ? Math.max(0, pos / 1000) : null, durationSec: num(x.duration_ms) > 0 ? num(x.duration_ms) / 1000 : null,
+      year: yearOf(x.release_date) });
+  }
+  return out;
+}
 
 async function acrcloud(acr, audio, sampleSec) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -264,11 +335,7 @@ async function acrcloud(acr, audio, sampleSec) {
   // Song position where the sample began. Prefer the matched-segment offsets
   // (db_begin − sample_begin); play_offset_ms is the position at the end of
   // the sample.
-  const dbBegin = num(m.db_begin_time_offset_ms), sBegin = num(m.sample_begin_time_offset_ms);
-  let positionMs = (Number.isFinite(dbBegin) && Number.isFinite(sBegin)) ? dbBegin - sBegin : NaN;
-  if (!Number.isFinite(positionMs) && Number.isFinite(num(m.play_offset_ms)) && Number.isFinite(sampleSec)) {
-    positionMs = num(m.play_offset_ms) - sampleSec * 1000;
-  }
+  const positionMs = positionMsOf(m, sampleSec);
   if (!Number.isFinite(positionMs)) return { status: 'no_match' };
 
   // A close call: another song (a different title, or the same title by a
@@ -281,12 +348,12 @@ async function acrcloud(acr, audio, sampleSec) {
   const ambiguous = list.some(x => {
     if (!x || x === m || !x.title || (num(x.score) || 0) < top - 10) return false;
     const names = bestArtists(x);
-    if (coverish(x, names) || generic(names)) return false;
+    if (coverish(x, names) || generic(names) || sameSong(m, x)) return false;   // another version of this song is not a different song
     return titleKey(x.title) !== mine || ((num(x.score) || 0) >= top - 5 && differentArtist(names[0] || '', mineArtist));
   });
 
   return {
-    status: 'ok', provider: 'ACRCloud', ambiguous,
+    status: 'ok', provider: 'ACRCloud', ambiguous, kind: versionKind(m.title), versions: versionsOf(m, list, sampleSec), versionsKnown: true,
     title: String(m.title),
     artist: joinArtists(bestArtists(m)),
     album: m.album && m.album.name ? String(m.album.name) : '',
@@ -325,7 +392,7 @@ async function audd(token, audio) {
   else if (appleName && (!artist || GENERIC_ARTIST.test(artist) || sameArtistSpelling(artist, appleName))) artist = appleName;
   const genre = r.apple_music && Array.isArray(r.apple_music.genreNames) ? r.apple_music.genreNames.find(g => g && g !== 'Music') || '' : '';
   return {
-    status: 'ok', provider: 'AudD',
+    status: 'ok', provider: 'AudD', kind: versionKind(r.title), versions: [],
     title: String(r.title), artist, album: String(r.album || ''),
     year: yearOf(r.release_date), genre: String(genre),
     durationSec: durMs > 0 ? durMs / 1000 : null,

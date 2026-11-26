@@ -4608,8 +4608,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       <div class="player-track" hidden aria-hidden="true">
   <div class="player-track-copy">
     <div class="player-status" id="playerStatus" role="status">Your player</div>
-    <button type="button" id="playerTrackTitle" disabled aria-haspopup="dialog">Load audio to begin</button>
-    <div class="player-track-detail" id="playerTrackDetail">MP3, WAV, FLAC, M4A and more</div>
+    <button type="button" id="playerTrackTitle" disabled aria-haspopup="dialog">-</button>
+    <div class="player-track-detail" id="playerTrackDetail">-</div>
   </div>
 </div><div class="display-selector-row" aria-label="Display selection and track identity">
       <div class="display-dot-tabs" id="displayModeDots" role="tablist" aria-label="Display mode" data-pos="0">
@@ -4802,25 +4802,25 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     </div>
 
     <div class="section" id="graphSection" style="margin-top: 16px; padding: 0; overflow: hidden; border-radius: var(--radius); position: relative; height: 200px;">
-      <canvas id="graphCanvas" style="display:block; width:100%; height:100%; background: #040201;" aria-label="Approximate tempo and elapsed beats: red integrates the approximate pulse; dashed gray uses one steady BPM; gray-brown shows local tempo over about eight beat intervals. A dotted tempo line indicates an approximate fluctuation reading. BPM values are on the left edge and Ë counts sit above the time labels. Use Track position or Jump controls to seek with a keyboard."></canvas>
-      <div class="graph-title lido-font" style="position:absolute;top:10px;left:14px;font-size:13px;color:var(--accent);letter-spacing:.6px;text-transform:none;pointer-events:none;">Approx. BPM Fluctuation</div>
+      <canvas id="graphCanvas" style="display:block; width:100%; height:100%; background: transparent;" aria-label="Approximate tempo and elapsed beats: red integrates the approximate pulse; dashed gray uses one steady BPM; gray-brown shows local tempo over about eight beat intervals. A dotted tempo line indicates an approximate fluctuation reading. BPM values are on the left edge and Ë counts sit above the time labels. Use Track position or Jump controls to seek with a keyboard."></canvas>
+      <div class="graph-title lido-font" style="position:absolute;top:10px;left:14px;font-size:13px;color:var(--accent);letter-spacing:.6px;text-transform:none;pointer-events:none;">BPM Fluctuation*</div>
       <div class="graph-timing lido-font" id="graphTiming" hidden></div>
       <div class="graph-legend lido-font" style="position:absolute;top:28px;left:14px;font-size:11px;color:var(--muted);pointer-events:none;">
-        <span class="graph-key-line graph-key-estimate"></span> <span id="graphBeatModeLabel">Beats · changing BPM</span> &nbsp;
-        <span class="graph-key-line graph-key-reference"></span> Beats · static/average BPM &nbsp;
-        <span class="graph-key-line graph-key-profile"></span> <span id="graphTempoModeLabel">Approx. BPM</span>
+        <span class="graph-key-line graph-key-estimate"></span> <span id="graphBeatModeLabel">Ë*</span> &nbsp;
+        <span class="graph-key-line graph-key-reference"></span> Ë (constant) &nbsp;
+        <span class="graph-key-line graph-key-profile"></span> <span id="graphTempoModeLabel">BPM*</span>
       </div>
       <details class="graph-legend-disclosure lido-font">
-        <summary aria-label="Show graph legend">Graph key</summary>
+        <summary aria-label="Show graph legend">Key</summary>
         <div class="graph-legend-popup">
-          <div class="graph-legend-popup-title">Tempo &amp; accumulated beats</div>
-          <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-estimate"></span><span id="graphElapsedLegend">Red: elapsed beats (Ë) from the approximate pulse</span></div>
-          <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-reference"></span>Dashed gray: elapsed beats at one steady BPM (the BPM shown)</div>
-          <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-profile"></span><span id="graphTempoLegend">Gray-brown: approximate local BPM over about eight beat intervals</span></div>
-          <div class="graph-legend-popup-hint">Swing, arpeggios and individual notes can move around a steady pulse. The local reading averages those timings while retaining slower drift, expressive rubato and section changes. Eight beats are not always two bars. Flatness alone cannot identify a click track.</div>
-          <div class="graph-legend-popup-hint">Red integrates BPM ÷ 60 over time: Ë is an approximate accumulated pulse count, not an exact annotation of every beat. Dotted tempo shows an approximate fluctuation reading; Change reports movement on that same graph. Unmetered music may have no single meaningful BPM. A listed BPM sets the displayed reference; the curve follows this recording.</div>
-          <div class="graph-legend-popup-hint">BPM values sit on the left edge; Ë counts sit above the time labels. The Change meter follows the gray-brown line. Click or tap to position; drag to scrub.</div>
-          <div class="graph-legend-popup-hint" id="graphTimingDetail" hidden></div>
+          <div class="graph-legend-popup-title">Graph key</div>
+          <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-estimate"></span><span id="graphElapsedLegend">Ë*</span></div>
+          <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-reference"></span>Ë (constant)</div>
+          <div class="graph-legend-popup-line"><span class="graph-key-line graph-key-profile"></span><span id="graphTempoLegend">BPM*</span></div>
+          
+          
+          
+          <div class="graph-legend-popup-hint">* Estimated</div><div class="graph-legend-popup-hint" id="graphTimingDetail" hidden></div>
         </div>
       </details>
     </div>
@@ -4855,7 +4855,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           <label class="eb-set-row" for="ebWholeNumbers">
             <input type="checkbox" id="ebWholeNumbers" class="eb-set-input" checked>
             <span class="eb-set-box" aria-hidden="true">✓</span>
-            <span class="eb-set-label">Show Player in Whole numbers</span>
+            <span class="eb-set-label">Show player in whole numbers</span>
           </label>
         </div>
       </section>
@@ -5534,8 +5534,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     <div class="player-info-popup-card">
       <button type="button" class="player-info-popup-close" id="playerInfoPopupClose" aria-label="Close player information">✕</button>
       <div class="player-info-popup-kicker" id="playerInfoPopupStatus">Your player</div>
-      <div class="player-info-popup-title" id="playerInfoPopupTitle">Load audio to begin</div>
-      <div class="player-info-popup-detail" id="playerInfoPopupDetail">MP3, WAV, FLAC, M4A and more</div>
+      <div class="player-info-popup-title" id="playerInfoPopupTitle">-</div>
+      <div class="player-info-popup-detail" id="playerInfoPopupDetail">-</div>
       <button type="button" class="player-info-popup-album" id="playerInfoPopupAlbum" hidden>View album art</button>
     </div>
   </div>
@@ -5603,7 +5603,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     
     const fmtBpm = n => fmt2(n);
 
-    /* v32: Settings › Show Player in Whole numbers — on unless it was turned
+    /* v32: Settings › Show player in whole numbers — on unless it was turned
        off. The player's readout shows whole Ë, REM Ë and BPM, and its clocks
        show minutes and seconds (00:00). */
     const EB_WHOLE_KEY = 'elapsedBeats.wholeNumbers.v1';
@@ -5793,6 +5793,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     let playbackStartTime = 0;
     let pauseOffset = 0;
     let isPlaying = false;
+    let uploadedAudioPaused = false;
 
     let trackBpmData = null;
     let baseTrackBpmData = null;
@@ -7261,6 +7262,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       const file = e.target.files?.[0];
       if (!file) return;
       currentLoadedFileName = file.name || '';
+      uploadedAudioPaused = false;
       const loadToken = ++currentLoadToken;
       const loadedAt = Date.now();
 
@@ -9570,9 +9572,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     }
 
     function updateTransportUI(enabled) {
-      playBtn.disabled = !enabled;
-      pauseBtn.disabled = !enabled;
-      stopBtn.disabled = !enabled;
+      const prox = !!window.ebProximitySensor?.isOn();
+      playBtn.disabled = !enabled && !prox;
+      pauseBtn.disabled = !enabled && !prox;
+      stopBtn.disabled = !enabled && !prox;
       reanalyzeBtn.disabled = !enabled;
     }
 
@@ -9701,6 +9704,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         playbackStartTime = audioCtx.currentTime - pauseOffset;
         sourceNode.start(0, pauseOffset);
         isPlaying = true;
+        uploadedAudioPaused = false;
         playBtn.classList.add('is-playing');
         setTransport('play');
         startRaf();
@@ -9723,6 +9727,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         }
         pauseOffset = getCurrentTime();
         isPlaying = false;
+        uploadedAudioPaused = true;
         playBtn.classList.remove('is-playing');
         setTransport('pause');
         stopRaf();
@@ -9730,6 +9735,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     }
 
     function stopAudio() {
+        uploadedAudioPaused = false;
         if (isPlaying && sourceNode) {
             sourceNode.onended = null;
             sourceNode.stop();
@@ -9996,9 +10002,14 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       }, 50);
     });
 
-    playBtn.addEventListener('click', playAudio);
-    pauseBtn.addEventListener('click', pauseAudio);
-    stopBtn.addEventListener('click', stopAudio);
+    function mediaTransport(action) {
+      const sensor = window.ebProximitySensor;
+      if (sensor && sensor.isOn()) return sensor.transportAction(action);
+      return action === 'play' ? playAudio() : action === 'pause' ? pauseAudio() : stopAudio();
+    }
+    playBtn.addEventListener('click', () => mediaTransport('play'));
+    pauseBtn.addEventListener('click', () => mediaTransport('pause'));
+    stopBtn.addEventListener('click', () => mediaTransport('stop'));
 
     halfBpm.addEventListener('click', () => { 
         const bpm = getActiveBpm(); 
@@ -10363,6 +10374,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       if (document.getElementById('albumModal').classList.contains('open')) return;
       e.preventDefault(); 
 
+      const sensor = window.ebProximitySensor;
+      if (sensor && sensor.isOn()) { mediaTransport(sensor.transportState() === 'pause' ? 'play' : 'pause'); return; }
       if (!audioBuffer) return; 
 
       if (!isPlaying) {
@@ -11163,10 +11176,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         timingCaptionSource = data;
         const tm = data && data.timing;
         const averageMode = Boolean(data && data.tempoMode === 'average');
-        document.getElementById('graphBeatModeLabel').textContent = averageMode ? 'Beats · average BPM' : 'Beats · changing BPM';
-        document.getElementById('graphTempoModeLabel').textContent = averageMode ? 'AVG. BPM' : 'Approx. BPM';
-        document.getElementById('graphElapsedLegend').textContent = averageMode ? 'Red: elapsed beats (Ë) at the selected average BPM' : 'Red: elapsed beats (Ë) from the approximate pulse';
-        document.getElementById('graphTempoLegend').textContent = averageMode ? 'Gray-brown: constant AVG. BPM' : 'Gray-brown: approximate local BPM over about eight beat intervals';
+        document.getElementById('graphBeatModeLabel').textContent = averageMode ? 'Ë (average)' : 'Ë*';
+        document.getElementById('graphTempoModeLabel').textContent = averageMode ? 'AVG. BPM' : 'BPM*';
+        document.getElementById('graphElapsedLegend').textContent = averageMode ? 'Ë (average)' : 'Ë*';
+        document.getElementById('graphTempoLegend').textContent = averageMode ? 'AVG. BPM' : 'BPM*';
         canvas.setAttribute('aria-label', averageMode ? 'Average BPM mode: red and dashed gray show elapsed beats at the same constant AVG. BPM; gray-brown shows that constant BPM. The counter and waveform follow the same rate. Change stays gray. Use Track position or Jump controls to seek with a keyboard.' : fluctuationGraphAria);
         let text = '', detail = '';
         if (data && data.sensorCaption) {
@@ -11206,8 +11219,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           text = 'Approx. fluctuation · reference BPM';
           detail = 'The dotted profile shows an approximate tempo reading. BPM in the Change meter follows this line, and Change briefly reports movement on it. Ë follows the same approximate pulse.';
         }
-        if (timingEl) { timingEl.textContent = text; timingEl.hidden = !text; timingEl.title = text; }
-        if (timingDetailEl) { timingDetailEl.textContent = detail; timingDetailEl.hidden = !detail; }
+        if (timingEl) { timingEl.textContent = text; timingEl.hidden = true; timingEl.title = text; }
+        if (timingDetailEl) { timingDetailEl.textContent = detail; timingDetailEl.hidden = true; timingDetailEl.title = detail; }
       }
 
       function resize() {
@@ -11364,7 +11377,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         const { dpr, mobile, padT, padL, drawW, drawH } = getGraphGeometry();
         if (!(drawW > 0 && drawH > 0)) return;
         const right = padL + drawW, bottom = padT + drawH;
-        const RED = '#F9423A', REFERENCE = '#A0A0A0', TEMPO = '#9B8C80';
+        const RED = '#EF6A43', REFERENCE = '#6F635B', TEMPO = '#453E39';
         let maxBeats = 1;
         for (let i = 0; i < beatCount; i++) {
           if (Number.isFinite(actualBeats[i])) maxBeats = Math.max(maxBeats, actualBeats[i]);
@@ -11393,7 +11406,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         ctx.font = `${10 * dpr}px 'Lido', serif`;
         ctx.lineWidth = dpr;
         ctx.setLineDash([]);
-        ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
         ctx.beginPath();
         ctx.moveTo(padL, padT); ctx.lineTo(padL, bottom);
         ctx.lineTo(right, bottom); ctx.lineTo(right, padT);
@@ -11405,12 +11418,12 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         for (let i = 0; i <= beatTicks; i++) {
           const value = i * beatStep, y = getYBeats(value);
           ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(right, y);
-          ctx.strokeStyle = '#160403'; ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.stroke();
         }
         for (let i = 0; i <= 4; i++) {
           const bpm = minBpm + ((maxBpm - minBpm) / 4) * i, y = getYBpm(bpm);
           ctx.textAlign = 'right';
-          ctx.fillStyle = TEMPO;
+          ctx.fillStyle = '#a2968e';
           const label = i === 4 ? `BPM ${bpm.toFixed(1)}` : bpm.toFixed(1);
           ctx.fillText(label, padL - 8 * dpr, y);
         }
@@ -11421,8 +11434,8 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           const secs = totalSeconds % 60;
           return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
-        const xSegments = Math.max(4, Math.min(6, Math.round(drawW / ((mobile ? 120 : 150) * dpr))));
-        const timeTicks = Array.from({ length: xSegments + 1 }, (_, i) => (maxTime * i) / xSegments);
+        const timeTickCount = 5;
+        const timeTicks = Array.from({ length: timeTickCount }, (_, i) => (maxTime * i) / Math.max(1, timeTickCount - 1));
 
         ctx.textAlign = 'center';
         for (const t of timeTicks) {
@@ -11430,17 +11443,17 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           const beatAtTime = sampleTrackSeries(t, times, actualBeats);
           const beatLabel = String(Math.max(0, Math.round(Number(beatAtTime) || 0)));
           ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, bottom);
-          ctx.strokeStyle = '#160403'; ctx.lineWidth = dpr; ctx.setLineDash([]); ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = dpr; ctx.setLineDash([]); ctx.stroke();
 
           ctx.textBaseline = 'top';
           ctx.fillStyle = RED;
           ctx.font = `bold ${11 * dpr}px 'Lido', serif`;
-          ctx.fillText(t === 0 ? `Ë ${beatLabel}` : beatLabel, x, bottom + 7 * dpr);
-
-          ctx.textBaseline = 'top';
-          ctx.fillStyle = '#C7342A';
+          ctx.fillText(t === 0 ? `Ë ${beatLabel}` : beatLabel, x, bottom + 5 * dpr);
+          ctx.fillStyle = '#999999';
           ctx.font = `${10.5 * dpr}px 'Lido', serif`;
-          ctx.fillText(formatGraphTimeLabel(t), x, bottom + 28 * dpr);
+          ctx.fillText((t === 0 ? 'Ë ' : '') + Math.round(globalBpm / 60 * t), x, bottom + 21 * dpr);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(formatGraphTimeLabel(t), x, bottom + 37 * dpr);
         }
 
         function drawSeries(xs, values, count, yFor, color, width, dash, options = {}) {
@@ -11467,13 +11480,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
         ctx.save();
         ctx.beginPath(); ctx.rect(padL, padT, drawW, drawH); ctx.clip();
-        drawSeries(times, actualBeats, beatCount, getYBeats, 'rgba(249,66,58,0.42)', 4.8, [], {
-          shadowColor: 'rgba(249,66,58,0.45)', shadowBlur: mobile ? 4.5 : 6.5
+        drawSeries(times, predictedBeats, beatCount, getYBeats, REFERENCE, 1.65, [6, 5], {
+          shadowColor: 'rgba(111,99,91,0.18)', shadowBlur: mobile ? 1.8 : 2.8
         });
         // Keep one measured curve. Change only its stroke style where tracking
         // is provisional; never turn missing support into a claim of zero drift.
         ctx.save();
-        ctx.strokeStyle = TEMPO; ctx.lineWidth = 1.8 * dpr;
+        ctx.strokeStyle = TEMPO; ctx.lineWidth = 1.9 * dpr;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
         for (let i = 1; i < tempoTimes.length; i++) {
           if (!Number.isFinite(tempoBpms[i - 1]) || !Number.isFinite(tempoBpms[i])) continue;
@@ -11484,10 +11497,10 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           ctx.lineTo(getX(tempoTimes[i]), getYBpm(tempoBpms[i])); ctx.stroke();
         }
         ctx.restore();
-        drawSeries(times, actualBeats, beatCount, getYBeats, RED, 2.8, []);
-        // Draw narrow gray dashes last so both beat styles remain visible when
-        // the totals coincide. Never offset either series to invent a difference.
-        drawSeries(times, predictedBeats, beatCount, getYBeats, REFERENCE, 1.7, [6, 5]);
+        drawSeries(times, actualBeats, beatCount, getYBeats, 'rgba(239,106,67,0.34)', 5.2, [], {
+          shadowColor: 'rgba(239,106,67,0.52)', shadowBlur: mobile ? 5.2 : 7.6
+        });
+        drawSeries(times, actualBeats, beatCount, getYBeats, RED, 2.9, []);
         ctx.restore();
 
         const hoverActive = graphHoverX !== null && graphHoverX >= padL && graphHoverX <= right;
@@ -11499,7 +11512,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           const reference = sampleTrackSeries(cursorTime, times, predictedBeats);
           const bpm = getTrackTempoAtTime(cursorTime, trackBpmData);
           ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, bottom);
-          ctx.strokeStyle = 'rgba(255,255,255,0.24)'; ctx.lineWidth = dpr;
+          ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = dpr;
           ctx.setLineDash(hoverActive ? [3 * dpr, 4 * dpr] : []); ctx.stroke(); ctx.setLineDash([]);
 
           // Each marker follows its own series and its own unit scale.
@@ -11534,7 +11547,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
             padL + 2 * dpr, right - boxW - 2 * dpr);
           const boxY = clamp(Math.min(getYBeats(beats), getYBeats(reference)) - boxH - 10 * dpr,
             padT + 3 * dpr, bottom - boxH - 3 * dpr);
-          ctx.fillStyle = 'rgba(4,2,1,0.92)';
+          ctx.fillStyle = 'rgba(18,17,19,0.9)';
           ctx.beginPath(); ctx.roundRect(boxX, boxY, boxW, boxH, 5 * dpr); ctx.fill();
           rows.forEach((row, index) => {
             const y = boxY + 4 * dpr + (index + 0.5) * rowH;
@@ -11691,9 +11704,12 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
       function mobileSongMessage() {
         const raw = rawTrackText();
         const noTrack = !trackEl || trackEl.classList.contains('no-track');
-        if (/^loading/i.test(raw)) return 'LOADING SONG';
-        if (/^failed/i.test(raw))  return 'LOAD FAILED — TRY ANOTHER FILE';
-        if (noTrack || !raw || !playbackIsActive()) return 'NO SONG PLAYING';
+        if (/^failed/i.test(raw)) return 'LOAD FAILED — TRY ANOTHER FILE';
+        if (uploadedAudioPaused) return 'PAUSED';
+        if (noTrack || !raw || /^loading/i.test(raw)) {
+          const filename = String(currentLoadedFileName || '').replace(/\.[^.]+$/, '').trim();
+          return filename ? filename.toUpperCase() : 'NO SONG PLAYING';
+        }
         return raw.toUpperCase();
       }
 
@@ -11721,7 +11737,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
           const sensor = window.ebProximitySensor;
           const m = sensor && sensor.isOn() ? sensor.vfd() : null;
           if (!m || !m.text) return '';
-          const text = (sensor.phase() === 'locked' ? TRACK_MARK : '') + m.text;
+          const text = (sensor.phase() === 'locked' && sensor.transportState?.() !== 'pause' ? TRACK_MARK : '') + m.text;
           return (m.bpmPage && bpmBelongsHere()) ? text + SEP + BPM_SLOT : text;
         } catch (_) { return ''; }
       }
@@ -11732,13 +11748,11 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         const raw = rawTrackText();
         const hint = (hintEl ? hintEl.textContent : '').trim();
         const noTrack = !trackEl || trackEl.classList.contains('no-track');
-        if (/^loading/i.test(raw)) return 'LOADING SONG';
-        if (/^failed/i.test(raw))  return 'LOAD FAILED — TRY ANOTHER FILE';
-        if (noTrack || !raw || !playbackIsActive()) {
-          /* Portrait phones have no dedicated BPM row: whenever a tempo is known the
-             lower display holds it, so an unidentified or paused track still shows BPM. */
-          const idleBpm = activeBpmValue();
-          return (bpmBelongsHere() && isFinite(idleBpm) && idleBpm > 0) ? mobileBpmMessage() : 'NO SONG PLAYING';
+        if (/^failed/i.test(raw)) return 'LOAD FAILED — TRY ANOTHER FILE';
+        if (uploadedAudioPaused) return 'PAUSED';
+        if (noTrack || !raw || /^loading/i.test(raw)) {
+          const filename = String(currentLoadedFileName || '').replace(/\.[^.]+$/, '').trim();
+          return filename ? filename.toUpperCase() : 'NO SONG PLAYING';
         }
         const parts = [TRACK_MARK + raw.toUpperCase()];
         if (bpmBelongsHere() && isFinite(activeBpmValue())) parts.push(BPM_SLOT);
@@ -11748,6 +11762,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
 
       function message() {
         if (!isPortraitMobile()) return desktopMessage();
+        const sensorMsg = sensorMessage();
+        if (sensorMsg) return sensorMsg;
+        if (!hasLoadedTrack() || !playbackIsActive()) return mobileSongMessage();
         return mobileView === 'bpm' ? mobileBpmMessage() : mobileSongMessage();
       }
 
@@ -12104,7 +12121,7 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         // A real playback start immediately wakes the display and cancels any
         // pending idle shutoff. Pausing/stopping gets one fresh 10-second
         // NO SONG PLAYING announcement, then the lit layer stays off.
-        if (playbackIsActive()) {
+        if (playbackIsActive() || msg !== 'NO SONG PLAYING') {
           if (idleDarkTimer) clearTimeout(idleDarkTimer);
           idleDarkTimer = null;
           idleDark = false;
@@ -17776,9 +17793,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
         // hide this lead.
         const leadName = activeTab === 'remix' ? (row.r || row.a || '') : (row.a || '');
         const profileAction = selected
-          ? `<button type="button" class="songdb-row-add-profile" data-profile-row-key="${escapeHtml(key)}" aria-label="Add ${escapeHtml(row.t)} to My Elapsed Beats Profile">Add to Profile <span aria-hidden="true">+</span></button>`
+          ? `<button type="button" class="eb-db-art" data-art-key="${escapeHtml(key)}" aria-label="View album art">Artwork</button> <button type="button" class="songdb-row-add-profile" data-profile-row-key="${escapeHtml(key)}" aria-label="Add ${escapeHtml(row.t)} to My Elapsed Beats Profile">Add to Profile <span aria-hidden="true">+</span></button>`
           : '';
-        const titleHtml = `<button type="button" class="songdb-title-open" data-art-row-key="${escapeHtml(key)}" aria-label="View album art for ${escapeHtml((row.a || '') + ' ' + row.t).trim()}">` +
+        const titleHtml = `<button type="button" class="songdb-title-open" data-art-row-key="${escapeHtml(key)}" aria-label="Select ${escapeHtml((row.a || '') + ' ' + row.t).trim()}" title="Select song · Alt-click for album art">` +
           `<span class="songdb-title-main">` +
           (leadName ? `<span class="songdb-title-lead">${escapeHtml(leadName)}: </span>` : '') +
           `${escapeHtml(row.t)}</span></button>` +
@@ -18199,6 +18216,9 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     }
 
     window.elapsedBeatsSongDbApi = {
+      graphSelection: () => selectedRowKey || '',
+      graphRow: key => { const row = catalogueRowForKey(key); if (!row) return null; const r = effectiveRow(row,key); return {key,title:r.t,artist:r.a,remixer:r.r,bpm:Number(r.b),duration:Number(r.d),total:Number(beatsFor(r))}; },
+      graphDeselect: () => { selectedRowKeys.clear(); selectedRowKey = ''; render(); },
       getAllRows: () => allCatalogueRows().map(row => {
         const key=rowKey(row), shown=effectiveRow(row,key), beats=beatsFor(shown);
         return {
@@ -19313,11 +19333,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     }
 
     bodyEl.addEventListener('click', (e) => {
+      const artwork = e.target.closest('.eb-db-art'); if (artwork) { e.preventDefault(); e.stopPropagation(); openSongDbArtwork(artwork.dataset.artKey); return; }
       const artButton = e.target.closest('.songdb-title-open');
       if (artButton) {
         e.preventDefault();
         e.stopPropagation();
-        openSongDbArtwork(artButton.dataset.artRowKey || '');
+        if (e.altKey) openSongDbArtwork(artButton.dataset.artRowKey || '');
+        else toggleRowSelection(artButton.closest('tr'));
         return;
       }
       const profileButton = e.target.closest('.songdb-row-add-profile');
@@ -23804,12 +23826,12 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
     const loading = /^loading/i.test(raw);
     const failed = /^failed/i.test(raw);
     const analyzing = /analy[sz]/i.test(note) && /performing|re-analy/i.test(note);
-    title.textContent = loading ? 'Loading your audio…' : failed ? 'Could not open this audio' : raw || 'Load audio to begin';
+    title.textContent = loading ? 'Loading your audio…' : failed ? 'Could not open this audio' : raw || '-';
     title.disabled = track.classList.contains('no-track') || !raw;
     title.title = title.disabled ? '' : raw + ' · View album art';
     const nextStatus = loading ? 'Loading' : failed ? 'Try another audio file' : analyzing ? 'Analyzing tempo' : ready() ? (isPlaying ? 'Now playing' : 'Ready to play') : 'Your player';
     if (status.textContent !== nextStatus) status.textContent = nextStatus;
-    detail.textContent = failed ? 'Choose another file with Load Audio.' : ready() ? (note || 'Audio loaded') : 'MP3, WAV, FLAC, M4A and more';
+    detail.textContent = failed ? 'Choose another file with Load Audio.' : ready() ? (note || 'Audio loaded') : '-';
     byId('readout').setAttribute('aria-busy', String(loading || analyzing));
     seek.setAttribute('aria-disabled', String(!ready()));
     seek.tabIndex = ready() ? 0 : -1;
@@ -23952,13 +23974,13 @@ input[type="number"], input[type="text"], select, textarea { font-size: 1rem; }
   if (!shell || !dotsBar || !dots.length || !status || !title || !detail || !popup) return;
 
   function loadedTrack() {
-    return !title.disabled && title.textContent.trim() && title.textContent.trim() !== 'Load audio to begin';
+    return !title.disabled && title.textContent.trim() && title.textContent.trim() !== '-';
   }
 
   function syncPlayerInfo() {
     const statusText = status.textContent.trim() || 'Your player';
-    const titleText = title.textContent.trim() || 'Load audio to begin';
-    const detailText = detail.textContent.trim() || 'MP3, WAV, FLAC, M4A and more';
+    const titleText = title.textContent.trim() || '-';
+    const detailText = detail.textContent.trim() || '-';
     /* No hover tooltip on the player panel (removed on request). */
     if (shell.hasAttribute('title')) shell.removeAttribute('title');
     popupStatus.textContent = statusText;
@@ -29353,8 +29375,8 @@ body{accent-color:#F9423A!important}
       hero.setAttribute('aria-label','Current track');
       hero.innerHTML=`<button type="button" class="eb-cinema-art" id="ebHeroArt" title="Open song artwork or load music" aria-label="Open album art or load music"><img class="eb-cover-brand" id="ebHeroBrand" alt="Elapsed Beats"/><img class="eb-cover-real" id="ebHeroCover" alt="Album cover" hidden /></button>
          <div class="eb-cinema-copy"><div class="eb-cinema-kicker">Listen / Analyze</div>
-         <h2 class="eb-cinema-title" id="ebHeroTitle">Load audio to begin</h2>
-         <div class="eb-cinema-sub" id="ebHeroDetail">Choose a song to start listening and analyzing.</div>
+         <h2 class="eb-cinema-title" id="ebHeroTitle">-</h2>
+         <div class="eb-cinema-sub" id="ebHeroDetail">-</div>
          <div class="eb-cinema-chips"><span>Elapsed Beats</span><span>Live analysis</span><span>Music in motion</span></div></div>`;
       shell.insertBefore(hero,shell.firstChild);
       hero.querySelector('#ebHeroBrand').src=logoSrc;
@@ -29370,8 +29392,8 @@ body{accent-color:#F9423A!important}
       const sync=()=>{
         const t=(trackTitle?.textContent||'').trim();
         const d=(detail?.textContent||'').trim();
-        heroTitle.textContent=t||'Load audio to begin';
-        heroDetail.textContent=d||'Choose a song to start listening and analyzing.';
+        heroTitle.textContent=t||'-';
+        heroDetail.textContent=d||'-';
       };
       sync();
       if(trackTitle)new MutationObserver(sync).observe(trackTitle,{childList:true,characterData:true,subtree:true});
@@ -30726,8 +30748,8 @@ html body #mainContent #songDbSection .songdb-mobile-compact-toggle .songdb-mobi
         var m=meta();
         var identified=!!(m.artist && m.song && trackInfo && !trackInfo.classList.contains('no-track'));
         var t=(srcTitle && srcTitle.textContent || '').trim(), d=(srcDetail && srcDetail.textContent || '').trim();
-        var songText=identified ? m.song : (t || 'Load audio to begin');
-        var artistText=identified ? m.artist : (m.loaded ? '' : (d || 'Choose a song to start listening and analyzing.'));
+        var songText=identified ? m.song : (t || '-');
+        var artistText=identified ? m.artist : (m.loaded ? '' : (d || '-'));
         var list=[];
         if(m.loaded){
           var key=norm(m.artist)+'|'+norm(m.song);
@@ -30745,9 +30767,9 @@ html body #mainContent #songDbSection .songdb-mobile-compact-toggle .songdb-mobi
         var acts=sx && Array.isArray(sx.actions) ? sx.actions : [];
         var sig=[songText,artistText,identified,list.join('|'),acts.map(function(a){ return a.label; }).join('|')].join('\u0001');
         if(sig===lastSig) return; lastSig=sig;
-        song.textContent=songText; song.title=songText;
+        song.textContent=songText; if(songText==='-') song.removeAttribute('title'); else song.title=songText;
         song.classList.toggle('eb-title-link',identified);
-        artist.textContent=artistText; artist.title=artistText; artist.hidden=!artistText;
+        artist.textContent=artistText; if(artistText==='-') artist.removeAttribute('title'); else artist.title=artistText; artist.hidden=!artistText;
         tags.replaceChildren.apply(tags,list.map(function(x){ var s=document.createElement('span'); s.className='eb-hero-tag'; s.textContent=x; return s; }));
         acts.forEach(function(a){
           var b=document.createElement('button'); b.type='button'; b.className='eb-hero-tag eb-hero-action';
@@ -31631,6 +31653,42 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
   const END_STOP_SEC = 1.5;       // ...or this long once the song's length has run out
   const DOWN_CHECK_SEC = 4, DOWN_STOP_SEC = 8;   // a big drop in level: check at once; still down and unrecognized → stopped
 
+  /* v32b: which version of a song an answer names — the original, a remix
+     (remix, edit, extended, live, acoustic, sped up…), or a part of an album
+     (an outro, intro, interlude…). The original is shown unless the remix is
+     clearly what's heard. One quick second look follows the first answer; it
+     can change original ↔ remix once, only on clear evidence, within the
+     first seconds. After that the version stays for the rest of the song. */
+  const VERSION_WINDOW_MS = 25000;   // the version can only change this soon after the song is shown…
+  const VERSION_LOOKS = 3;           // …from at most this many quick looks
+  const VERSION_MARGIN = 8;          // in that look the other version must beat the one on screen by this much
+  const V_PART = /\b(?:outro|intro|interlude|reprise|skit|medley|megamix|mash-?up|snippet|teaser|segue|transition)\b/i;
+  const V_REMIX = /\b(?:remix(?:ed)?|rmx|re-?mix|bootleg|rework|re-?edit|flip|vip|dub|mix|edit|extended|instrumental|acapella|a cappella|sped[- ]?up|slowed|nightcore|reverb|8d|live|acoustic|unplugged|demo|version)\b/i;
+  const V_ORIGINAL = /\b(?:original(?: mix| version)?|radio (?:edit|version|mix)|single (?:edit|version|mix)|album version|remaster(?:ed)?|\d{4} remaster(?:ed)?|explicit|clean|mono|stereo)\b/i;
+  function kindOf(title) {
+    const t = String(title || '');
+    if (V_PART.test(t)) return 'part';
+    const tags = ((t.match(/[([][^)\]]*[)\]]/g) || []).join(' ') + ' ' + ((/\s[-–—]\s(.*)$/.exec(t) || [])[1] || '')).trim();
+    if (!tags) return 'original';
+    const named = tags.replace(/\b(?:feat\.?|ft\.?|featuring|with)\b[^)\]]*/gi, ' ');
+    if (!V_REMIX.test(named)) return 'original';
+    if (V_ORIGINAL.test(named) && !/\b(?:remix|rmx|bootleg|rework|vip|dub|club|extended|live|acoustic|instrumental)\b/i.test(named)) return 'original';
+    return 'remix';
+  }
+  const vkey = s => String(s == null ? '' : s).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const classOf = x => x && x.kind === 'remix' ? 'remix' : x && x.kind === 'part' ? 'part' : 'original';
+  // one version of a song: the original, or a particular remix / part
+  const versionId = x => classOf(x) === 'original' ? 'original' : classOf(x) + ' ' + vkey(x.rawTitle || x.title);
+  /* A Song Database row or Taste Profile record fits the version on screen:
+     a remix takes only that remix's tempo, the original never a remix's. */
+  function fitsVersion(row, m) {
+    const remixRow = row.kind === 'remix' || !!String(row.remixer || '').trim() || kindOf(row.title) === 'remix';
+    if (!m || m.kind !== 'remix') return !remixRow;
+    if (!remixRow) return false;
+    const t = vkey(m.rawTitle || m.title), who = vkey(row.remixer || '');
+    return vkey(row.title) === t || (!!who && t.includes(who));
+  }
+
   /* =====================================================================
      1. Placement — mirror the song clock exactly
      ===================================================================== */
@@ -32374,7 +32432,9 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
         year: String(data.year || ''), genre: String(data.genre || ''), duration: numberOrNaN(data.durationSec),
         isrc: String(data.isrc || (data.externalIds && data.externalIds.isrc) || (data.external_ids && data.external_ids.isrc) || '').trim(),
         pos, positionQuality: String(data.positionQuality || 'estimated'),
-        score: numberOrNaN(data.score), ambiguous: !!data.ambiguous };
+        score: numberOrNaN(data.score), ambiguous: !!data.ambiguous,
+        kind: /^(?:original|remix|part)$/.test(data.kind) ? data.kind : kindOf(data.title), rawTitle: String(data.title),
+        versions: Array.isArray(data.versions) ? data.versions.filter(v => v && v.title) : [], versionsKnown: !!data.versionsKnown };
       tidyIdentity(r);
       if (loadedMatches(r)) {
         const fine = await localMatch(clip, r.pos, guard);
@@ -32438,6 +32498,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     });
   }
   function fluctuationTimeline(m, Bshow, Bfill, D) {
+    const prior = window.ebRecordingTempo?.({title:m.title,artist:m.artist,remixer:m.remixer||'',duration:D,bpm:Bshow});
     const tr = cleanTrace(m, Bfill), step = Math.max(0.25, D / 1600), n = Math.ceil(D / step) + 1;
     const times = new Array(n), bpms = new Array(n), conf = new Array(n), beats = new Array(n), ref = new Array(n);
     let j = 0, heard = 0;
@@ -32449,7 +32510,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       if (a && b && b.pos - a.pos <= TRACE_GAP) { const f = (t - a.pos) / ((b.pos - a.pos) || 1); v = a.bpm + f * (b.bpm - a.bpm); c = Math.min(a.conf, b.conf); }
       else if (a && t - a.pos <= TRACE_EDGE) { v = a.bpm; c = a.conf; }
       else if (b && b.pos - t <= TRACE_EDGE) { v = b.bpm; c = b.conf; }
-      if (!isFinite(v)) { v = Bfill; c = -1; } else heard++;
+      if (!isFinite(v)) { v = prior ? sampleSeries(prior.times,prior.tempoTraceBpms,t) : Bfill; c = prior ? 0 : -1; } else heard++;
       times[i] = t; bpms[i] = v; conf[i] = c; ref[i] = Bshow / 60 * t;
       beats[i] = i ? beats[i - 1] + (bpms[i - 1] + v) / 120 * (t - times[i - 1]) : 0;
     }
@@ -32472,7 +32533,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     const timing = { source: 'beats', kind: 'human', measuredBpm: measured, noiseRel, tempos: [], changePct: 0 };
     const out = { sensor: true, duration: D, globalBpm: Bshow, measuredBpm: measured,
       times: T, actualBeats: AB, predictedBeats: RF, localBpms: BP, tempoTraceBpms: BP.slice(),
-      profileTimes: T.slice(), profileBpms: BP.slice(), localConfidences: CF, timing, sensorCaption: caption };
+      profileTimes: T.slice(), profileBpms: BP.slice(), localConfidences: CF, timing, sensorCaption: caption, sourceLabel: prior?.sourceLabel };
     out.change = changeTimeline(m, Bfill, D, timing, Bshow);
     return out;
   }
@@ -32506,7 +32567,8 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     if (!validBpm(Bshow) || !validBpm(Bfill)) return null;
     const D = validDur(m.duration) ? m.duration : Math.max(60, Math.ceil((posNow(m) + 45) / 30) * 30);
     const avg = averageModeOn();
-    const sig = [avg ? 1 : 0, Bshow.toFixed(3), Bfill.toFixed(3), D.toFixed(2), m.traceVer || 0].join('|');
+    const archived = !avg && window.ebRecordingTempo?.({title:m.title,artist:m.artist,remixer:m.remixer||'',duration:D,bpm:Bshow});
+    const sig = [archived?.sourceLabel||'', avg ? 1 : 0, Bshow.toFixed(3), Bfill.toFixed(3), D.toFixed(2), m.traceVer || 0].join('|');
     if (m.timeline && m.timelineSig === sig) return m.timeline;
     m.timelineSig = sig;
     m.timeline = avg ? averageTimeline(Bshow, D) : fluctuationTimeline(m, Bshow, Bfill, D);
@@ -32587,7 +32649,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       const all = [].concat(p.analysis ? Object.keys(p.analysis).map(k => p.analysis[k]) : [], Array.isArray(p.tracks) ? p.tracks : []);
       let hit = null;
       for (const r of all) {
-        if (!r || !sameTitle(r.title, m.title) || !sameArtist(r.artist, m.artist)) continue;
+        if (!r || !sameTitle(r.title, m.title) || !sameArtist(r.artist, m.artist) || !fitsVersion(r, m)) continue;
         const good = Number(r.elapsedBeats) > 0 && validDur(Number(r.durationSec));
         const hg = hit && Number(hit.elapsedBeats) > 0 && validDur(Number(hit.durationSec));
         if (!hit || (good && !hg) || (good === hg && (r.updatedAt || 0) > (hit.updatedAt || 0))) hit = r;
@@ -32600,7 +32662,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       const api = window.elapsedBeatsSongDbApi; if (!api || !api.getAllRows) return null;
       let hit = null;
       for (const r of api.getAllRows()) {
-        if (!r || !validBpm(Number(r.bpm)) || !sameTitle(r.title, m.title) || !sameArtist(r.artist, m.artist)) continue;
+        if (!r || !validBpm(Number(r.bpm)) || !sameTitle(r.title, m.title) || !sameArtist(r.artist, m.artist) || !fitsVersion(r, m)) continue;
         if (!hit || (hit.kind !== 'original' && r.kind === 'original')) hit = r;
       }
       return hit;
@@ -32906,7 +32968,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
         : Math.max(0, PROBE_SEC - sinceSec(b.k)) * 1000 + 80);
       return;
     }
-    if ((S.pend && S.pend.keys.size) || S.chal) { schedule(Math.max(0, VERIFY_SEC - sinceSec(S.freshK)) * 1000 + 80); return; }
+    if ((S.pend && S.pend.keys.size) || S.chal || versionLookDue()) { schedule(Math.max(0, VERIFY_SEC - sinceSec(S.freshK)) * 1000 + 80); return; }
     const m = S.match;
     if (S.phase === 'locked' && m) {
       const c = pendingCut();
@@ -32954,7 +33016,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       mode = 'confirm'; fromK = Math.max(fromK, S.scrub.k);  // fresh sound, to confirm a new place
     }
     // v32: a song is being weighed (nothing shown yet, or another song heard): the next answer comes from fresh sound
-    if (mode === 'scan' && ((S.pend && S.pend.keys.size) || S.chal)) { mode = 'verify'; fromK = Math.max(fromK, S.freshK); }
+    if (mode === 'scan' && ((S.pend && S.pend.keys.size) || S.chal || versionLookDue())) { mode = 'verify'; fromK = Math.max(fromK, S.freshK); }
     const have = Math.min(mic.seconds(), sinceSec(fromK));
     const need = mode === 'scan' ? (withFile && !S.localOnlyTried ? LOCAL_FIRST_SEC : FIRST_SEC) : mode === 'verify' ? VERIFY_SEC : PROBE_SEC;
     if (have < need) {
@@ -33075,10 +33137,16 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     return agreeing(list);
   }
   const keepRecent = () => { while (S.recent.length > RECENT_N) S.recent.shift(); };
-  function commit(r, startWall, roomEnv, votes, list) {
+  function commit(r, startWall, roomEnv, votes, list, settled) {
+    // Only a confirmed different recording releases a manual pause.
+    if (S.hold && S.hold.key !== r.key) S.hold = null;
     const m = S.match = { key: r.key, title: r.title, artist: r.artist, album: r.album, year: r.year, genre: r.genre,
       duration: validDur(r.duration) ? r.duration : NaN, source: r.source, provider: r.provider, positionQuality: r.positionQuality,
-      isrc: r.isrc || '', anchors: [startWall], startWall, tempo: null, votes: votes || 1 };
+      isrc: r.isrc || '', anchors: [startWall], startWall, tempo: null, votes: votes || 1,
+      kind: classOf(r), rawTitle: r.rawTitle || r.title, versions: Array.isArray(r.versions) ? r.versions : [] };
+    // v32b: one quick look at the version, unless several answers already agreed on it
+    const agreed = list && list.length >= 2 && list.every(a => versionId(a.r) === versionId(r));
+    m.vcheck = settled || r.source === 'local' || agreed ? null : { until: performance.now() + VERSION_WINDOW_MS, looks: 0, cand: '' };
     S.scrub = null; S.pend = null; S.chal = null; S.stopped = false; S.downChecked = false;
     S.recent = list && list.length ? list.slice(-RECENT_N) : [{ key: r.key, start: startWall, r }];
     m.tidal = tidalLookup(m);
@@ -33090,6 +33158,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
   }
   // The song stopped: zero everything and keep listening for the next one.
   function stopSong() {
+    if (S.hold) return; // silence does not erase a manually frozen display
     if (!S.match && !S.pend) return;
     S.match = null; S.pend = null; S.chal = null; S.recent = null; S.scrub = null; S.misses = 0; S.tries = 0;
     S.stopped = true; S.downChecked = false;
@@ -33100,13 +33169,70 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     if (!S.busy) schedule(FAST_RETRY_MS);
   }
 
+  /* v32b: the version on screen --------------------------------------------
+     Of several answers naming one song, the version most of them named is
+     shown (the original on a tie). Then one quick look: the same version
+     again settles it; the other one changes it once — only when that version
+     was also named before (in the first answer's list or the previous look)
+     and, in this look, clearly beat the one on screen. Nothing else changes
+     the version, and after the window it stays for the rest of the song. */
+  function pickVersion(list, r) {
+    if (!list || list.length < 2) return r;
+    const n = new Map(); list.forEach(a => { const id = versionId(a.r); n.set(id, (n.get(id) || 0) + 1); });
+    let best = '', bn = 0;
+    n.forEach((c, id) => { if (c > bn || (c === bn && id === 'original')) { best = id; bn = c; } });
+    for (let i = list.length - 1; i >= 0; i--) if (versionId(list[i].r) === best) return list[i].r;
+    return r;
+  }
+  function versionLookDue() {
+    const m = S.match;
+    return !!(S.phase === 'locked' && m && m.vcheck && m.vcheck.looks < VERSION_LOOKS && performance.now() < m.vcheck.until);
+  }
+  // Another answer that is this song still playing: a version the first answer listed, or
+  // an outro/intro/interlude by the same artist heard mid-song.
+  function otherVersion(m, r, mode) {
+    if (r.source === 'local' || m.source === 'local') return false;
+    const id = vkey(r.rawTitle || r.title);
+    if ((m.versions || []).some(x => vkey(x.title) === id && sameArtist(x.artist, r.artist))) return true;
+    const mine = vkey(m.rawTitle || m.title);   // …or this answer lists the song on screen as a version of itself
+    if ((r.versions || []).some(x => vkey(x.title) === mine && sameArtist(x.artist, m.artist))) return true;
+    return mode !== 'boundary' && mode !== 'end' && classOf(r) === 'part' && classOf(m) !== 'part' && sameArtist(r.artist, m.artist);
+  }
+  function versionCue(m, r, clip, roomEnv) {
+    const v = m.vcheck;
+    if (!v || v.looks > VERSION_LOOKS || performance.now() > v.until) { m.vcheck = null; return false; }
+    const d = classOf(m), o = classOf(r), id = vkey(r.rawTitle || r.title);
+    const flip = (d === 'original' && o === 'remix') || (d === 'remix' && o === 'original') || (d === 'part' && o === 'original');
+    if (!flip) {
+      if (o === d) m.vcheck = null;                              // the same kind of version again: settled
+      return false;
+    }
+    const seen = v.cand === id || (m.versions || []).some(x => vkey(x.title) === id);
+    let clear = true;
+    if (d !== 'part') {
+      if (r.versionsKnown) {
+        // the version on screen (for the original: any original release) must trail clearly in this look
+        const mine = vkey(m.rawTitle || m.title);
+        clear = !(r.versions || []).some(x => (vkey(x.title) === mine || (d === 'original' && classOf(x) === 'original'))
+          && !(Number(r.score) - Number(x.score) >= VERSION_MARGIN));
+      } else clear = v.cand === id;                               // no list to weigh: named twice running
+    }
+    if (seen && clear) { commit(r, startOf(r, clip), roomEnv, 1, null, true); return true; }
+    v.cand = id;
+    if (v.looks >= VERSION_LOOKS) m.vcheck = null;
+    return false;
+  }
+
   function apply(r, clip, quiet, roomEnv, mode) {
+    const vm = S.match;
+    if (vm && vm.vcheck) { if (performance.now() > vm.vcheck.until) vm.vcheck = null; else if (!quiet) vm.vcheck.looks++; }
     if (!quiet) S.tries++;
     if (clip && !quiet) S.freshK = Math.max(S.freshK, clip.k0 + clip.pcm.length);
     if (r) {
       S.identified = null;
       let m = S.match;
       if (m && m.key === r.key) {
+        if (m.vcheck && versionCue(m, r, clip, roomEnv)) return;
         /* The sensor commits to the position it found when it first recognized
            the song: later checks of the same song only confirm it is still
            playing and never move the clock or Ë. (A chorus or passage that
@@ -33127,6 +33253,15 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
         return;
       }
       if (m) {
+        if (otherVersion(m, r, mode)) {
+          if (m.vcheck && versionCue(m, r, clip, roomEnv)) return;
+          if (mode === 'end') m.overran = true;
+          m.votes = (m.votes || 1) + 1; S.chal = null;
+          (S.recent || (S.recent = [])).push({ key: m.key, start: m.startWall, r }); keepRecent();
+          S.misses = 0; S.tries = 0;
+          setPhase('locked');
+          return;
+        }
         // Another song while one is on screen.
         const fresh = mode === 'boundary' || mode === 'end';   // sound came back after a gap, or the song's length ran out
         if (fresh && decisive(r)) { commit(r, startOf(r, clip), roomEnv, 1); return; }
@@ -33137,7 +33272,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
           const mine = S.recent.filter(a => a.key === m.key).length;
           const agree = agreeing(S.recent.filter(a => a.key === r.key));
           const need = (fresh ? 2 : CHALLENGE_VOTES) + (loose(r) || loose(m) ? 1 : 0);
-          if (agree.length >= need && agree.length >= mine + 2) { commit(r, agree[0].start, roomEnv, agree.length, agree); return; }
+          if (agree.length >= need && agree.length >= mine + 2) { commit(pickVersion(agree, r), agree[0].start, roomEnv, agree.length, agree); return; }
           S.chal = true; S.misses = 0;
           return;                                               // the song on screen stays
         }
@@ -33150,7 +33285,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       if (loose(r)) strict = true;
       P.keys.forEach((l, k) => { if (k !== r.key) rival = Math.max(rival, agreeing(l).length); if (loose(l[l.length - 1].r)) strict = true; });
       if (decisive(r) && P.keys.size === 1) { commit(r, startOf(r, clip), roomEnv, 1); return; }
-      if (agree.length >= (strict ? 3 : 2) && agree.length > rival) { commit(r, agree[0].start, roomEnv, agree.length, agree); return; }
+      if (agree.length >= (strict ? 3 : 2) && agree.length > rival) { commit(pickVersion(agree, r), agree[0].start, roomEnv, agree.length, agree); return; }
       if (P.keys.size === 1 && P.tries >= 3 && !r.ambiguous && !strict) { commit(r, agree[0].start, roomEnv, 1); return; }   // the only song named, the rest unclear
       if (P.tries >= PEND_MAX) { S.pend = null; S.misses++; if (S.phase !== 'none') announce('No song recognized'); setPhase('none'); return; }
       if (S.phase !== 'listening') setPhase('listening');
@@ -33171,6 +33306,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       }
     }
     const pastEnd = m && validDur(m.duration) && !m.overran && posNow(m) > m.duration;
+    if (S.hold && !r) return; // keep paused identity during silence or uncertain matches
     if (S.phase === 'locked' && m && quiet) { stopSong(); return; }
     // A song on screen stays while its sound goes on and its length hasn't run
     // out: an unclear stretch doesn't drop it — unless the sound has also fallen
@@ -33197,6 +33333,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
   let lastForce = 0;
   function putHtml(node, html, force) { if (node && (force || node.__ebSensorHtml !== html)) { node.innerHTML = html; node.__ebSensorHtml = html; } }
   function view() {
+    if (S.hold) return S.hold.view;
     const m = S.match;
     if (S.phase === 'locked' && m) {
       let pos = posNow(m);
@@ -33226,6 +33363,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
   function watchStop() {
     const m = S.match;
     if (S.phase === 'locked' && m) {
+      if (S.hold) { if (mic.downSec >= DOWN_CHECK_SEC && !S.downChecked && !S.busy) { S.downChecked = true; schedule(0); } else if (mic.downSec === 0) S.downChecked = false; return; }
       const over = validDur(m.duration) && !m.overran && posNow(m) > m.duration;
       if (mic.stopSec >= STOP_SEC || (over && mic.stopSec >= END_STOP_SEC)) { stopSong(); return; }
       // the level fell well under the music: check now rather than at the next resync
@@ -33260,6 +33398,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
   };
   function setPhase(p) {
     S.phase = p;
+    syncSensorTransport();
     btn.dataset.state = p;
     btn.setAttribute('aria-label', LABELS[p] || LABELS.off);
     btn.title = p === 'service' && S.problem ? S.problem.title + '. ' + S.problem.detail
@@ -33270,11 +33409,34 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
   /* =====================================================================
      10. On / off
      ===================================================================== */
+  function sensorTransportState() { return S.hold ? 'pause' : S.phase === 'locked' && S.match ? 'play' : 'stop'; }
+  function syncSensorTransport() {
+    if (!S.on) return;
+    updateTransportUI(!!g(() => audioBuffer, null));
+    const state = sensorTransportState();
+    setTransport(state);
+    playBtn.classList.toggle('is-playing', state === 'play');
+  }
+  function sensorTransportAction(action) {
+    if (!S.on) return;
+    if (action === 'stop') { turnOff(); stopAudio(); return; }
+    if (action === 'pause' && !S.hold) {
+      const m = S.match, v = view();
+      S.hold = { key: m?.key || '', view: v, data: m ? sensorTimeline(m) : null, buffer: m ? (m.source === 'local' ? loadedBuffer() : (m.wave || null)) : null };
+      announce('Paused');
+    } else if (action === 'play' && S.hold) {
+      S.hold = null;
+      // Recognition remains on the source clock; resume at its current estimated position.
+      if (!S.busy) schedule(0);
+      announce('Resumed proximity tracking');
+    }
+    syncSensorTransport(); refreshPanel();
+  }
   async function turnOn(kind) {
     if (S.on) return;
     kind = kind === 'device' || kind === 'mic' ? kind : preferredSource();
     S.source = kind;
-    S.on = true; S.gen++; const gen = S.gen;
+    S.on = true; S.hold = null; S.gen++; const gen = S.gen;
     S.match = null; S.misses = 0; S.tries = 0; S.busy = false; S.localOnlyTried = false;
     S.problem = null; S.identified = null; S.cloudDownUntil = 0; S.probe = null;
     S.blockedDetail = ''; S.inputDb = -Infinity; S.startedAt = performance.now();
@@ -33328,7 +33490,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
   }
   function turnOff() {
     if (!S.on) return;
-    S.on = false; S.gen++;
+    S.on = false; S.hold = null; S.gen++;
     S.requests.forEach(ac => ac.abort()); S.requests.clear(); S.probe = null;
     clearTimeout(S.timer); S.timer = 0; clearTimeout(S.blockedTimer); S.blockedTimer = 0; S.busy = false;
     clearTimeout(S.tempoTimer); S.tempoTimer = 0;
@@ -33341,6 +33503,9 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     btn.title = OFF_TITLE;
     document.documentElement.classList.remove('eb-sensor-on');
     Object.keys(E).forEach(k => { if (E[k]) E[k].__ebSensorHtml = null; });
+    updateTransportUI(!!g(() => audioBuffer, null));
+    setTransport(g(() => isPlaying, false) ? 'play' : g(() => pauseOffset, 0) > 0 ? 'pause' : 'stop');
+    playBtn.classList.toggle('is-playing', !!g(() => isPlaying, false));
     // Hand every readout back to the player exactly as it was.
     try { if (typeof updateBpmUI === 'function') updateBpmUI(); } catch (_) {}
     try { if (typeof updateDisplay === 'function') updateDisplay(typeof getCurrentTime === 'function' ? getCurrentTime() : 0); } catch (_) {}
@@ -33383,6 +33548,8 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
   window.ebProximitySensor = {
     isOn: () => S.on,
     phase: () => S.phase,
+    transportState: sensorTransportState,
+    transportAction: sensorTransportAction,
     // Who the panel is showing right now (read-only; used for the header artwork).
     nowPlaying: () => {
       if (!S.on) return null;
@@ -33395,13 +33562,15 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     source: () => (S.on ? S.source : null),
     canHearThisComputer: () => DEVICE_AUDIO,
     turnOff,
-    bpm: () => { if (!S.on || S.phase !== 'locked' || !S.match) return NaN; const b = tempoNow(S.match).bpm; return validBpm(b) ? b : NaN; },
+    bpm: () => { if (S.on && S.hold) return S.hold.view.bpm; if (!S.on || S.phase !== 'locked' || !S.match) return NaN; const b = tempoNow(S.match).bpm; return validBpm(b) ? b : NaN; },
     // What the BPM graph, Change meter and Ë waveform read while the sensor is on:
     // the heard song's tempo timeline, its position now, and its waveform: the
     // loaded file's audio when it is that song, else its saved waveform
     // (nothing at all while listening, unrecognised, or never analysed).
+    databasePlayback: () => { const m = S.on && S.phase === 'locked' && !S.stopped ? S.match : null; return m ? {title:m.title,artist:m.artist,time:S.hold ? S.hold.view.pos : Math.min(posNow(m),validDur(m.duration)?m.duration:Infinity),data:S.hold ? S.hold.data : sensorTimeline(m),paused:!!S.hold} : null; },
     graph: () => {
       if (!S.on) return null;
+      if (S.hold) return {data:S.hold.data,change:S.hold.data?.change || S.hold.data,time:S.hold.view.pos,buffer:S.hold.buffer};
       const m = S.phase === 'locked' ? S.match : null;
       if (!m) return { data: null, time: 0, buffer: null };
       let pos = posNow(m); if (validDur(m.duration)) pos = Math.min(pos, m.duration);
@@ -33410,6 +33579,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
     },
     vfd: () => {
       if (!S.on) return null;
+      if (S.hold) return {text:'PAUSED'};
       if (S.phase === 'listening') return { text: S.source === 'device' ? 'LISTENING TO THIS COMPUTER' : 'LISTENING' };
       if (S.phase === 'blocked') return { text: S.blockedMsg || 'MICROPHONE UNAVAILABLE' };
       if (S.phase === 'service') return { text: S.problem ? S.problem.vfd : 'RECOGNITION UNAVAILABLE' };
@@ -33444,7 +33614,7 @@ html.eb-sensor-on #ebHeroCover{ display:none!important; }
       return { song: '-', artist: '-', tags: [], actions: sourceActions() };
     },
     debug: () => ({ phase: S.phase, on: S.on, misses: S.misses, tries: S.tries, cloudDownMs: Math.max(0, S.cloudDownUntil - performance.now()),
-      commit: { pendTries: S.pend ? S.pend.tries : 0, pendKeys: S.pend ? S.pend.keys.size : 0, challenging: !!S.chal, recent: S.recent ? S.recent.length : 0, votes: S.match ? S.match.votes : 0, stopped: S.stopped, stopSec: mic.stopSec, downSec: mic.downSec },
+      commit: { version: S.match ? S.match.kind + (S.match.vcheck ? ' looking ' + S.match.vcheck.looks : ' settled') : '', pendTries: S.pend ? S.pend.tries : 0, pendKeys: S.pend ? S.pend.keys.size : 0, challenging: !!S.chal, recent: S.recent ? S.recent.length : 0, votes: S.match ? S.match.votes : 0, stopped: S.stopped, stopSec: mic.stopSec, downSec: mic.downSec },
       endpoint: S.endpoint, issue: S.problem && S.problem.code, inputDb: S.inputDb, microphoneState: mic.ctx && mic.ctx.state,
       micSeconds: mic.seconds(), sampleRate: mic.sr, latencyMs: mic.latencyMs,
       seek: { lastDropout: mic.cut ? mic.cut.k : null, checked: S.cutK, confirming: !!S.scrub, written: mic.written, nextCheckMs: S.timer ? Math.round(S.nextAt - performance.now()) : null, busy: S.busy },
@@ -34468,7 +34638,7 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
       return Math.max(0, Number(getCurrentTime()) || 0);
     }, 0);
   }
-  function hasSong() { return !!g(function () { return audioBuffer; }, null); }
+  function hasSong() { return !!sensor() || !!g(function () { return audioBuffer; }, null); }
   function arrays() { var d = getData(); return d && Array.isArray(d.times) && Array.isArray(d.actualBeats) && d.times.length && d.actualBeats.length && d.times.length === d.actualBeats.length ? d : null; }
   function fallbackBpm() {
     var d = getData(), v = d && Number(d.globalBpm);
@@ -34499,6 +34669,7 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
     return g(function () { return getDuration(); }, 0) || 0;
   }
   function transport() {
+    var prox = sensor(); if (prox) return prox.transportState();
     if (g(function () { return isPlaying; }, false)) return 'play';
     return g(function () { return pauseOffset; }, 0) > 1e-4 ? 'pause' : 'stop';
   }
@@ -34519,6 +34690,13 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
   }
   function ledText() {
     var s = sensor(), b = avgBpm();
+    if (!s && g(function () { return uploadedAudioPaused; }, false)) return 'PAUSED';
+    if (!s && !g(function () { return isPlaying; }, false)) {
+      var raw = (($('trackInfo') || {}).textContent || '').trim();
+      if (/^failed/i.test(raw)) return 'LOAD FAILED';
+      var name = g(function () { return currentLoadedFileName; }, '');
+      if (name) return raw && !($('trackInfo').classList.contains('no-track')) ? raw.toUpperCase() : name.replace(/\.[^.]+$/, '').toUpperCase();
+    }
     if (isFinite(b) && b > 0 && (s || hasSong())) return 'AVG. BPM: ' + b.toFixed(2);
     if (s) { var v = g(function () { return s.vfd(); }, null); if (v && v.text) return v.text; return 'LISTENING'; }
     return hasSong() ? 'AVG. BPM: ---.--' : 'NO SONG PLAYING';
@@ -34533,9 +34711,9 @@ html body #progressContainer:not(.eb-song-ready) .progress-handle{opacity:0!impo
     var a = g(function () { return typeof currentArtist === 'string' ? currentArtist.trim() : ''; }, '');
     if (!a) {
       var det = (($('playerTrackDetail') || {}).textContent || '').trim();
-      if (det && !/^choose a song/i.test(det)) a = det;
+      if (det && det !== '-' && !/^choose a song/i.test(det)) a = det;
     }
-    if (!hasSong() || !t || /^load audio/i.test(t)) return { title: 'No song loaded', artist: 'Tap the art to load music', loaded: false };
+    if (!hasSong() || !t || t === '-' || /^load audio/i.test(t)) return { title: 'No song loaded', artist: 'Tap the art to load music', loaded: false };
     return { title: t, artist: a, loaded: true };
   }
   function artSrc() { var i = $('albumArtImg'); var s = i && i.getAttribute('src'); return s && !sensor() ? s : ''; }
@@ -37694,5 +37872,353 @@ html body #mainContent.wrap > header.app-header.eb-side-3 > #ebUploadTab { heigh
   window.addEventListener('load', function () { if (typeof window.ebSetWholeNumbers === 'function') window.ebSetWholeNumbers(window.ebWholeNumbers(), true); soon(); setTimeout(soon, 1200); });
 })();
 </script>
+<style id="eb-dash-tips-css">
+/* v32c: the empty player's dash tips and the Upload Music tip — one window, the
+   look of the Premium tooltip. Hover with a mouse, trackpad or pen (desktop and
+   Surface); long-press with a finger (phones, tablets, touchscreens). */
+#ebDashTip{position:fixed;left:0;top:0;z-index:2147483000;box-sizing:border-box;width:max-content;max-width:min(300px,calc(100vw - 16px));
+  padding:9px 12px;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:linear-gradient(180deg,#232327,#0c0c0e);
+  color:var(--eb-ink,#f3f3f4);box-shadow:0 18px 40px -12px #000;
+  font:300 11.5px/1.35 "Segoe UI Variable Small Light","Segoe UI","SF Mono",system-ui,-apple-system,sans-serif;text-align:center;
+  pointer-events:none;opacity:0;visibility:hidden;transform:translateY(4px);transition:opacity .16s ease,transform .16s ease,visibility .16s ease}
+#ebDashTip.is-below{transform:translateY(-4px)}
+#ebDashTip.is-on{opacity:1;visibility:visible;transform:none}
+#ebDashTip.is-touch{font-size:13px;padding:11px 14px}
+#ebDashTip::after{content:'';position:absolute;left:var(--ax,50%);bottom:-5px;width:8px;height:8px;margin-left:-4px;background:#0c0c0e;
+  border-right:1px solid rgba(255,255,255,.14);border-bottom:1px solid rgba(255,255,255,.14);transform:rotate(45deg)}
+#ebDashTip.is-below::after{bottom:auto;top:-5px;background:#232327;transform:rotate(225deg)}
+html body .eb-hero-song.eb-is-dash,html body .eb-hero-artist.eb-is-dash{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+@media (prefers-reduced-motion:reduce){#ebDashTip{transition:none}}
+</style>
+<script id="eb-dash-tips">
+(function () {
+  'use strict';
+  var SONG_TIP = 'Click upload music button to add a file, or use proximity sensor.', FORMATS_TIP = 'MP3, WAV, FLAC, M4A and more';
+  var HOLD_MS = 450, HOVER_MS = 200, SHOW_MS = 6000, MOVE_PX = 10;
+  var q = function (s) { return document.querySelector(s); };
+  var song = function () { return q('.eb-hero-song'); }, artist = function () { return q('.eb-hero-artist'); };
+  var upload = function () { return document.getElementById('ebUploadTab'); };
+  var isDash = function (el) { return !!el && !el.hidden && el.textContent.trim() === '-'; };
+  var tip = null, anchor = null, by = '', hideTimer = 0, hoverTimer = 0, hold = null, heldAt = 0;
+
+  function box() {
+    if (tip && tip.isConnected) return tip;
+    tip = document.createElement('div'); tip.id = 'ebDashTip'; tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip); return tip;
+  }
+  // the dash itself, not the whole heading row
+  function inkRect(el) {
+    var r = document.createRange(); r.selectNodeContents(el);
+    var b = r.getBoundingClientRect();
+    return b.width || b.height ? b : el.getBoundingClientRect();
+  }
+  function near(r, x, y, pad) {
+    return (r.width > 0 || r.height > 0) && x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad;
+  }
+  function show(el, text, how) {
+    var t = box();
+    clearTimeout(hideTimer); clearTimeout(hoverTimer);
+    if (anchor && anchor !== el) anchor.removeAttribute('aria-describedby');
+    anchor = el; by = how;
+    t.textContent = text;
+    t.classList.toggle('is-touch', how === 'touch');
+    t.classList.remove('is-on', 'is-below');
+    t.style.left = '0px'; t.style.top = '0px';
+    var r = el === upload() ? el.getBoundingClientRect() : inkRect(el);
+    var w = t.offsetWidth, h = t.offsetHeight, vw = document.documentElement.clientWidth || innerWidth, vh = innerHeight, gap = 10, m = 8;
+    var ax = Math.min(Math.max(r.left + r.width / 2, m + 14), vw - m - 14);          // where the arrow points
+    var below = r.top - gap - h < m && r.bottom + gap + h <= vh - m;
+    var left = Math.min(Math.max(ax - w / 2, m), Math.max(m, vw - m - w));
+    t.style.left = left + 'px';
+    t.style.top = Math.max(m, below ? r.bottom + gap : r.top - gap - h) + 'px';
+    t.style.setProperty('--ax', Math.min(Math.max(ax - left, 14), w - 14) + 'px');
+    t.classList.toggle('is-below', below);
+    el.setAttribute('aria-describedby', 'ebDashTip');
+    void t.offsetWidth;
+    t.classList.add('is-on');
+    if (how === 'touch') hideTimer = setTimeout(hide, SHOW_MS);
+  }
+  function hide() {
+    clearTimeout(hideTimer); clearTimeout(hoverTimer);
+    if (anchor) anchor.removeAttribute('aria-describedby');
+    anchor = null; by = '';
+    if (tip) tip.classList.remove('is-on');
+  }
+  // which tip a pointer at (x, y) asks for
+  function gap(r, x, y) { return Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)); }
+  function tipAt(e, touch) {
+    var s = song(), a = artist(), u = upload(), x = e.clientX, y = e.clientY, pad = touch ? 16 : 3;
+    if (!touch && u && e.target && u.contains(e.target)) return [u, FORMATS_TIP];
+    // the dash nearest the finger (the two sit close together on a phone)
+    var best = null, bd = Infinity;
+    [[s, SONG_TIP], touch ? [a, FORMATS_TIP] : null].forEach(function (c) {
+      if (!c || !isDash(c[0])) return;
+      var r = inkRect(c[0]); if (!near(r, x, y, pad)) return;
+      var d = gap(r, x, y); if (d < bd) { bd = d; best = c; }
+    });
+    return best;
+  }
+  function mark() {
+    [song(), artist()].forEach(function (el) { if (el) el.classList.toggle('eb-is-dash', isDash(el)); });
+    if (anchor && anchor !== upload() && !isDash(anchor)) hide();
+  }
+
+  // Mouse, trackpad and pen: hover (desktop, Surface)
+  document.addEventListener('pointermove', function (e) {
+    if ((e.pointerType !== 'mouse' && e.pointerType !== 'pen') || e.buttons) return;
+    var t = e.target, near = t && t.closest && t.closest('.eb-hero-song, #ebUploadTab');
+    if (!near) { if (by === 'hover') hide(); else clearTimeout(hoverTimer); return; }
+    var hit = tipAt(e, false);
+    if (hit && hit[0] === anchor) return;
+    clearTimeout(hoverTimer);
+    if (!hit) { if (by === 'hover') hide(); return; }
+    hoverTimer = setTimeout(function () { show(hit[0], hit[1], 'hover'); }, by === 'hover' ? 0 : HOVER_MS);
+  }, { passive: true });
+  document.addEventListener('pointerout', function (e) {
+    if ((e.pointerType === 'mouse' || e.pointerType === 'pen') && !e.relatedTarget) { clearTimeout(hoverTimer); if (by === 'hover') hide(); }
+  }, { passive: true });
+
+  // A finger: long-press (phones, tablets, Surface in tablet use)
+  function cancelHold() { if (hold) { clearTimeout(hold.timer); hold = null; } }
+  document.addEventListener('pointerdown', function (e) {
+    if (by) hide();                                              // a tap anywhere closes the window
+    cancelHold();
+    if (e.pointerType !== 'touch' || !e.isPrimary) return;
+    mark();
+    var hit = tipAt(e, true); if (!hit) return;
+    var h = hold = { id: e.pointerId, x: e.clientX, y: e.clientY, fired: false };
+    h.timer = setTimeout(function () { if (hold !== h) return; h.fired = true; heldAt = Date.now(); show(hit[0], hit[1], 'touch'); }, HOLD_MS);
+  }, { capture: true, passive: true });
+  document.addEventListener('pointermove', function (e) {
+    if (hold && !hold.fired && e.pointerId === hold.id && Math.abs(e.clientX - hold.x) + Math.abs(e.clientY - hold.y) > MOVE_PX) cancelHold();
+  }, { capture: true, passive: true });
+  ['pointerup', 'pointercancel'].forEach(function (type) {
+    document.addEventListener(type, function (e) { if (hold && e.pointerId === hold.id) { if (!hold.fired) clearTimeout(hold.timer); hold = null; } }, { capture: true, passive: true });
+  });
+  // the long press opens this window, not the browser's menu or text selection
+  document.addEventListener('contextmenu', function (e) { if ((hold && !hold.fired) || Date.now() - heldAt < 1200) e.preventDefault(); }, true);
+  document.addEventListener('click', function (e) { if (Date.now() - heldAt < 700 && anchor && anchor.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
+
+  // Keyboard: Upload Music shows the formats while focused
+  document.addEventListener('focusin', function (e) {
+    var u = upload();
+    if (u && e.target === u && u.matches(':focus-visible')) show(u, FORMATS_TIP, 'focus');
+  });
+  document.addEventListener('focusout', function (e) { if (anchor && e.target === anchor && by === 'focus') hide(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && by) hide(); });
+  addEventListener('scroll', function () { if (by) hide(); }, { passive: true });
+  addEventListener('resize', function () { if (by) hide(); });
+
+  // keep the dash marked (no selection or callout on a long press), and close a tip once a song appears
+  var watched = null;
+  function watch() {
+    var c = q('.eb-cinema-copy');
+    if (c && c !== watched) { watched = c; new MutationObserver(mark).observe(c, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden'] }); }
+    mark();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+  var tries = 0, iv = setInterval(function () { watch(); if (++tries > 40 || watched) clearInterval(iv); }, 500);
+})();
+</script>
+
+<style id="eb-frosted-graph-theme-v2">
+#graphSection{
+  position:relative;
+  overflow:hidden !important;
+  border-radius:18px !important;
+  border:1px solid rgba(255,255,255,.09) !important;
+  background:
+    radial-gradient(140% 180% at 15% -10%, rgba(255,255,255,.035) 0%, rgba(255,255,255,0) 32%),
+    linear-gradient(132deg, rgba(255,255,255,.026) 0%, rgba(255,255,255,0) 18%, rgba(255,255,255,.018) 31%, rgba(255,255,255,0) 46%, rgba(255,255,255,.015) 58%, rgba(255,255,255,0) 72%),
+    radial-gradient(125% 150% at 16% 0%, rgba(138,72,54,.14) 0%, rgba(138,72,54,0) 38%),
+    radial-gradient(110% 145% at 84% 8%, rgba(61,47,45,.16) 0%, rgba(61,47,45,0) 40%),
+    linear-gradient(180deg, rgba(14,14,16,.965) 0%, rgba(4,4,6,.975) 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 24px 52px rgba(0,0,0,.44),
+    0 0 0 1px rgba(255,255,255,.018) !important;
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
+}
+#graphSection::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045) 0%, rgba(255,255,255,.012) 16%, rgba(255,255,255,0) 42%),
+    linear-gradient(118deg, rgba(255,255,255,.018) 0%, rgba(255,255,255,0) 22%, rgba(255,255,255,.012) 34%, rgba(255,255,255,0) 48%, rgba(255,255,255,.009) 64%, rgba(255,255,255,0) 78%);
+}
+#graphCanvas{
+  background:transparent !important;
+  border-radius:inherit;
+}
+#graphSection .graph-title,
+#graphSection .graph-timing,
+#graphSection .graph-legend,
+.graph-legend-disclosure,
+.graph-legend-popup,
+.graph-legend-disclosure summary{
+  font-family:'Lido', serif !important;
+}
+#graphSection .graph-title{
+  color:#f1d5c9 !important;
+  font-size:.94rem !important;
+  letter-spacing:.02em !important;
+  text-shadow:0 1px 10px rgba(0,0,0,.35);
+}
+#graphSection .graph-timing,
+#graphSection .graph-legend{
+  color:#b9ada8 !important;
+}
+.graph-legend-disclosure summary{
+  border:1px solid rgba(255,255,255,.12) !important;
+  border-radius:12px !important;
+  background:linear-gradient(180deg, rgba(49,46,48,.72), rgba(17,17,19,.8)) !important;
+  color:#ddd1cb !important;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 6px 18px rgba(0,0,0,.22);
+}
+.graph-legend-popup{
+  border:1px solid rgba(255,255,255,.12) !important;
+  border-radius:14px !important;
+  background:
+    radial-gradient(120% 140% at 22% 0%, rgba(161,83,61,.16) 0%, rgba(161,83,61,0) 38%),
+    linear-gradient(180deg, rgba(30,27,29,.92), rgba(12,11,13,.95)) !important;
+  color:#c7b7b0 !important;
+  box-shadow:0 18px 40px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05) !important;
+  backdrop-filter: blur(18px) saturate(155%);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+}
+.graph-legend-popup-title{ color:#f0d2c6 !important; }
+.graph-key-estimate{ background:#ef6a43 !important; }
+.graph-key-reference{ background:repeating-linear-gradient(to right, #6f635b 0 5px, transparent 5px 8px) !important; }
+.graph-key-profile{ background:#453e39 !important; }
+</style>
+
+<style id="eb-db-mini-graph-css">
+#ebDbMiniGraph{
+  position:fixed;
+  z-index:80;
+  bottom:calc(10px + env(safe-area-inset-bottom,0px));
+  left:50%;
+  transform:translateX(-50%);
+  width:min(740px,calc(100% - 20px));
+  box-sizing:border-box;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:18px;
+  padding:10px 12px 12px;
+  color:#ddd3cd;
+  font:12px 'Lido', serif;
+  background:
+    radial-gradient(140% 180% at 15% -10%, rgba(255,255,255,.032) 0%, rgba(255,255,255,0) 32%),
+    linear-gradient(132deg, rgba(255,255,255,.024) 0%, rgba(255,255,255,0) 18%, rgba(255,255,255,.016) 31%, rgba(255,255,255,0) 46%, rgba(255,255,255,.013) 58%, rgba(255,255,255,0) 72%),
+    radial-gradient(125% 150% at 16% 0%, rgba(138,72,54,.12) 0%, rgba(138,72,54,0) 38%),
+    radial-gradient(110% 145% at 84% 8%, rgba(61,47,45,.14) 0%, rgba(61,47,45,0) 40%),
+    linear-gradient(180deg, rgba(14,14,16,.968) 0%, rgba(4,4,6,.978) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 24px 52px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.018);
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
+  overflow:hidden;
+}
+#ebDbMiniGraph::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045) 0%, rgba(255,255,255,.012) 16%, rgba(255,255,255,0) 42%),
+    linear-gradient(118deg, rgba(255,255,255,.018) 0%, rgba(255,255,255,0) 22%, rgba(255,255,255,.012) 34%, rgba(255,255,255,0) 48%, rgba(255,255,255,.009) 64%, rgba(255,255,255,0) 78%);
+}
+#ebDbMiniGraph[hidden]{display:none!important}
+#ebDbMiniGraph header{display:flex;align-items:center;gap:10px;margin:0 0 6px;padding:0;min-width:0;position:relative;z-index:1}
+#ebDbMiniTitle{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1;color:#f2d7cc;font-size:14px;letter-spacing:.02em}
+#ebDbMiniGraph button,.eb-db-art{
+  background:linear-gradient(180deg, rgba(49,46,48,.72), rgba(17,17,19,.8));
+  color:#ddd1cb;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:11px;
+  padding:5px 9px;
+  cursor:pointer;
+  font:inherit;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 6px 18px rgba(0,0,0,.22)
+}
+#ebDbMiniGraph #ebDbGraphClose{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;border-radius:12px;border:1px solid transparent;color:var(--eb-red,#f9423a);background:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.02) 48%,transparent 52%) padding-box,linear-gradient(180deg,rgba(38,39,43,.9),rgba(13,13,15,.95)) padding-box,linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,.06) 55%,rgba(255,255,255,.1)) border-box;box-shadow:0 6px 14px -8px #000,inset 0 1px 0 rgba(255,255,255,.08)}
+#ebDbMiniGraph #ebDbGraphClose svg{width:17px;height:17px;display:block;color:inherit}
+#ebDbMiniGraph #ebDbGraphClose:hover{border-color:var(--eb-red,#f9423a)}
+#ebDbMiniGraph canvas{display:block;width:100%;height:134px;background:transparent;position:relative;z-index:1}
+#ebDbMiniMeta{position:relative;z-index:1;color:#b9ada8;font-size:10.5px;line-height:1.35;white-space:normal;margin-top:4px}
+#songDbSection.eb-mini-open{padding-bottom:208px!important}
+#songdbBody tr.eb-db-playing .songdb-title-main:before{content:'▶ ';color:#ef6a43}
+#ebDbMiniPlay{color:#ef6a43;font-size:14px;text-shadow:0 0 12px rgba(239,106,67,.38)}
+@media(max-width:480px){
+  #ebDbMiniGraph{padding:8px 9px 10px;border-radius:16px}
+  #ebDbMiniGraph canvas{height:124px}
+  #songDbSection.eb-mini-open{padding-bottom:192px!important}
+}
+</style>
+<script id="eb-recording-tempo-cache">
+(function(){
+const norm=v=>String(v||'').normalize('NFKC').toLowerCase().trim().replace(/\s+/g,' ');
+const key=r=>[norm(r.artist),norm(r.title),norm(r.remixer),Math.round(r.duration),Number(r.bpm).toFixed(2)].join('|');
+const cache=new Map(),pending=new Set(); let historyRaw=null, history=[];
+function valid(r){return r&&r.title&&r.artist&&r.duration>0&&r.bpm>0;}
+function profile(r,T,B,source){if(!Array.isArray(T)||!Array.isArray(B)||T.length!==B.length||T.length<2||T.some((t,i)=>!Number.isFinite(t)||(i&&t<=T[i-1]))||B.some(b=>!Number.isFinite(b)||b<30||b>350))return null;
+const d=r.duration,b=r.bpm; if(Math.abs(T[T.length-1]-d)>Math.max(2,d*.01)||T[0]>2)return null;
+const times=T.slice(),bpms=B.slice();times[0]=0;times[times.length-1]=d; if(times.some((t,i)=>i&&t<=times[i-1]))return null;
+const sorted=bpms.slice().sort((a,b)=>a-b),med=sorted[Math.floor(sorted.length/2)];if(Math.abs(med/b-1)>.25)return null;
+const actualBeats=[0];for(let i=1;i<times.length;i++)actualBeats.push(actualBeats[i-1]+(bpms[i]+bpms[i-1])*(times[i]-times[i-1])/120);
+return {duration:d,globalBpm:b,times,actualBeats,predictedBeats:times.map(t=>t*b/60),tempoTraceBpms:bpms,localBpms:bpms,localConfidences:times.map(()=>0),sourceLabel:source};}
+function saved(r){try{const raw=localStorage.getItem('elapsedBeats.analysisHistory.v1');if(raw!==historyRaw){historyRaw=raw;history=JSON.parse(raw||'[]');}}catch(_){} if(r.remixer)return null;for(const h of history.slice().reverse()){if(norm(h.title)!==norm(r.title)||norm(h.artist)!==norm(r.artist))continue;const g=h.graph;if(!g)continue;const p=profile(r,g.profileTimes?.length?g.profileTimes:g.times,g.profileBpms?.length?g.profileBpms:g.localBpms,'Saved audio analysis');if(p)return p;}return null;}
+async function json(url){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const res=await fetch(url,{signal:controller.signal});if(!res.ok)throw Error('Unavailable');return await res.json();}finally{clearTimeout(timer);}}
+let nextRequest=0;
+async function lookup(r,k){if(r.remixer||pending.has(k)||cache.has(k)||Date.now()<nextRequest)return;nextRequest=Date.now()+1500;pending.add(k);try{const q='recording:"'+String(r.title).replace(/["\\]/g,'')+'" AND artist:"'+String(r.artist).replace(/["\\]/g,'')+'"';const m=await json('https://musicbrainz.org/ws/2/recording/?fmt=json&limit=25&query='+encodeURIComponent(q));const hits=(m.recordings||[]).filter(x=>norm(x.title)===norm(r.title)&&norm((x['artist-credit']||[]).map(a=>a.name+(a.joinphrase||'')).join(''))===norm(r.artist)&&Math.abs(x.length/1000-r.duration)<=Math.min(2,r.duration*.01));if(hits.length!==1)throw Error('Ambiguous recording');const a=await json('https://acousticbrainz.org/'+hits[0].id+'/low-level');const ticks=a.rhythm?.beats_position;if(!Array.isArray(ticks)||ticks.length<17||ticks.some((t,i)=>!Number.isFinite(t)||(i&&t<=ticks[i-1]))||ticks[0]>2||r.duration-ticks.at(-1)>2||ticks.at(-1)>r.duration+.5)throw Error('Incomplete beat coverage');const T=[0],B=[];for(let i=4;i<ticks.length-4;i++){const bpm=480/(ticks[i+4]-ticks[i-4]);if(!Number.isFinite(bpm)||bpm<30||bpm>350)throw Error('Invalid tempo');if(ticks[i]>=r.duration)break;T.push(ticks[i]);B.push(bpm);}if(!B.length)throw Error('No tempo');B.unshift(B[0]);T.push(r.duration);B.push(B.at(-1));const p=profile(r,T,B,'AcousticBrainz beat timestamps');cache.set(k,p||null);}catch(_){cache.set(k,null);}finally{pending.delete(k);}}
+window.ebRecordingTempo=function(r){if(!valid(r))return null;const p=saved(r);if(p)return p;const k=key(r);if(!cache.has(k))void lookup(r,k);return cache.get(k)||null;};
+})();</script>
+<script id="eb-db-mini-graph-js">
+(function(){'use strict';
+const section=document.getElementById('songDbSection'),body=document.getElementById('songdbBody'); if(!section||!body)return;
+const panel=document.createElement('aside');panel.id='ebDbMiniGraph';panel.hidden=true;panel.setAttribute('aria-label','Database BPM and elapsed beats graph');panel.innerHTML='<header><span id="ebDbMiniPlay" hidden>▶</span><span id="ebDbMiniTitle"></span><button type="button" id="ebDbGraphClose" aria-label="Close graph" title="Close graph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6L18 18M18 6L6 18"/></svg></button></header><canvas aria-label="BPM and elapsed beats over time"></canvas><div class="eb-db-graph-footer"><div id="ebDbMiniMeta"></div><div class="eb-db-graph-key" aria-label="Graph key"><span><i class="graph-key-line graph-key-estimate"></i> Ë*</span><span><i class="graph-key-line graph-key-reference"></i> Ë (constant)</span><span><i class="graph-key-line graph-key-profile"></i> BPM*</span><span class="eb-est-note">* Estimated</span></div></div>';document.body.appendChild(panel);
+const cv=panel.querySelector('canvas'),ctx=cv.getContext('2d'),title=panel.querySelector('#ebDbMiniTitle'),meta=panel.querySelector('#ebDbMiniMeta'),play=panel.querySelector('#ebDbMiniPlay');
+let liveKey='',lastIdentity='',lastLive=null,paused=null,dismissed='',lastSelected='',lastDraw=0;
+const api=()=>window.elapsedBeatsSongDbApi;
+panel.querySelector('button').onclick=()=>{dismissed=liveKey;paused=null;api()?.graphDeselect();panel.hidden=true;};
+const fmt=t=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
+function estimate(r){if(!(r.bpm>0&&r.duration>0))return null;const known=window.ebRecordingTempo?.(r);if(known)return known;const b=r.bpm,d=r.duration,e=d*b/60;return {duration:d,globalBpm:b,times:[0,d],actualBeats:[0,e],predictedBeats:[0,e],tempoTraceBpms:[b,b],localConfidences:[0,0]};}
+function draw(d,t,live){const w=cv.clientWidth,h=cv.clientHeight,ratio=Math.min(3,devicePixelRatio||1);if(!w||!h||!ctx)return; if(cv.width!==Math.round(w*ratio)||cv.height!==Math.round(h*ratio)){cv.width=Math.round(w*ratio);cv.height=Math.round(h*ratio);}ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,w,h);ctx.font="10px 'Lido', serif"; if(!d){ctx.fillStyle='#c4b4ad';ctx.fillText('BPM or duration unavailable',8,25);return;}
+const D=d.duration,T=d.times,A=d.actualBeats,R=d.predictedBeats,series=typeof getTrackTempoSeries==='function'?getTrackTempoSeries(d):{times:T,bpms:d.tempoTraceBpms||d.localBpms};if(!series||!T||!A||!R||!(D>0))return;
+const B=d.globalBpm,bs=series.bpms.filter(Number.isFinite),span=Math.max(5,B*.05,...bs.map(v=>Math.abs(v-B)*1.2)),rawE=Math.max(1,...A.filter(Number.isFinite),...R.filter(Number.isFinite)),mag=10**Math.floor(Math.log10(rawE/5)),inc=([1,2,2.5,5,10].find(n=>n*mag>=rawE/5)||10)*mag,maxE=Math.ceil(rawE/inc)*inc,left=55,right=w-22,top=12,bot=h-48,X=v=>left+(right-left)*v/D,Y=v=>bot-(bot-top)*v/maxE,Z=v=>bot-(bot-top)*(v-(B-span))/(2*span);
+ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.textBaseline='middle';for(let i=0;i<=4;i++){const y=top+(bot-top)*i/4;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();ctx.textAlign='right';ctx.fillStyle='#9b9089';ctx.fillText((i===0?'BPM ':'')+(B+span-span*i/2).toFixed(1),left-5,y);}
+
+function line(xs,ys,map,color,dash,width){ctx.beginPath();let started=false;for(let i=0;i<Math.min(xs.length,ys.length);i++){if(!Number.isFinite(xs[i])||!Number.isFinite(ys[i])){started=false;continue;}const x=X(xs[i]),y=map(ys[i]);if(started)ctx.lineTo(x,y);else{ctx.moveTo(x,y);started=true;}}ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);ctx.stroke();ctx.setLineDash([]);}
+line(T,R,Y,'#6f635b',[5,5],1.1);line(T,A,Y,'rgba(239,106,67,.34)',[],4);line(T,A,Y,'#ef6a43',[],2.5);for(let i=1;i<series.times.length;i++){const support=live&&typeof getTrackTempoSupportAtTime==='function'?Math.min(getTrackTempoSupportAtTime(series.times[i-1],d),getTrackTempoSupportAtTime(series.times[i],d)):0;line(series.times.slice(i-1,i+1),series.bpms.slice(i-1,i+1),Z,'#453e39',support>=.35?[]:[2,3],1.7);}
+const timeTickCount=5;ctx.textAlign='center';ctx.textBaseline='middle';for(let i=0;i<timeTickCount;i++){const tt=D*i/4,x=X(tt);ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bot);ctx.strokeStyle='rgba(255,255,255,.055)';ctx.stroke();ctx.fillStyle='#ef6a43';ctx.fillText((i===0?'Ë ':'')+Math.round(sampleTrackSeries(tt,T,A)),x,bot+9);ctx.fillStyle='#999999';ctx.fillText((i===0?'Ë ':'')+Math.round(B/60*tt),x,bot+24);ctx.fillStyle='#ffffff';ctx.fillText(fmt(tt),x,bot+39);}if(t!=null){const x=X(Math.max(0,Math.min(D,t)));ctx.strokeStyle='rgba(255,255,255,.22)';ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bot);ctx.stroke();ctx.fillStyle='#ef6a43';ctx.beginPath();ctx.arc(x,Y(sampleTrackSeries(t,T,A)),3,0,Math.PI*2);ctx.fill();}}
+
+function tick(now){requestAnimationFrame(tick);if(now-lastDraw<80)return;lastDraw=now;const a=api();if(!a||!a.graphRow)return;const sensor=window.ebProximitySensor,live=sensor?.databasePlayback?.()||null;const identity=live?live.artist+'\u0000'+live.title:'';if(identity!==lastIdentity){if(lastLive&&liveKey&&!live&&!dismissed&&sensor?.isOn())paused={key:liveKey,data:lastLive.data,time:lastLive.time};lastIdentity=identity;liveKey=live?(a.findIdentity(live.artist,live.title)?.key||''):'';dismissed='';if(live)paused=null;}if(live)lastLive=live;
+const selected=a.graphSelection();if(selected!==lastSelected){paused=null;lastSelected=selected; if(selected)dismissed='';}
+const key=selected||(liveKey!==dismissed?liveKey:'')||paused?.key||'';const visible=!section.hidden&&section.getClientRects().length>0&&!document.documentElement.classList.contains('eb-watch');
+for(const tr of body.querySelectorAll('tr[data-row-key]'))tr.classList.toggle('eb-db-playing',!!liveKey&&!live?.paused&&tr.dataset.rowKey===liveKey);
+const r=key?a.graphRow(key):null;panel.hidden=!visible||!r;section.classList.toggle('eb-mini-open',!panel.hidden);if(panel.hidden)return;const running=!!live&&key===liveKey;const stopped=!running&&paused?.key===key;const d=(running?live.data:stopped?paused.data:null)||estimate(r),t=running?live.time:stopped?paused.time:null;title.textContent=(r.artist?r.artist+': ':'')+r.title+(r.remixer?' · '+r.remixer:'');play.hidden=!running||!!live?.paused;meta.textContent=[running?(live.paused?'Paused':'Live'):stopped?'Stopped':'',d?d.globalBpm.toFixed(2)+' BPM':'',d?.sourceLabel||(!running&&!stopped&&d?'Average only':'')].filter(Boolean).join(' · ');draw(d,t,running||stopped);}
+requestAnimationFrame(tick);
+})();</script>
+<style id="eb-short-graph-key">
+#graphSection .graph-timing[hidden],#graphTimingDetail[hidden]{display:none!important}
+#graphSection{overflow:visible!important}
+#graphSection .graph-legend-popup{width:max-content;max-width:calc(100vw - 48px);padding:10px 14px}
+.graph-legend-popup-title{font-size:12px;margin-bottom:7px}
+.graph-legend-popup-line{gap:9px;margin:6px 0;color:#d2c8c2}
+.graph-key-line{display:inline-block;flex:0 0 26px;width:26px;height:0!important;border-radius:0!important;background:none!important;vertical-align:middle}
+.graph-key-estimate{border-top:2.9px solid #ef6a43}
+.graph-key-reference{border-top:2px dashed #6f635b}
+.graph-key-profile{border-top:2px solid #453e39}
+.eb-db-graph-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;position:relative;z-index:1}
+.eb-db-graph-key{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;font:10.5px 'Lido',serif;color:#c6bbb4}
+.eb-db-graph-key span{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+.eb-db-graph-key .graph-key-line{width:22px;flex-basis:22px}
+.eb-est-note{color:#9d918a}
+</style>
 </body>
 </html>
