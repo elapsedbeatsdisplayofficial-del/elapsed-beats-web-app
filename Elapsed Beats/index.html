@@ -5271,6 +5271,7 @@ input[type="number"], input[type="text"], select, textarea { font-size:var(--eb-
         <div class="songdb-head-tools">
           
           <div class="songdb-count" id="songdbCount">0 tracks</div>
+          <button type="button" id="songdbSelectPage" class="songdb-select-page" title="Select every result currently shown on this page">Select All</button>
         </div>
       </div>
 
@@ -5348,7 +5349,6 @@ input[type="number"], input[type="text"], select, textarea { font-size:var(--eb-
       </div>
 
       <div class="songdb-metric-toolbar">
-        <button type="button" id="songdbSelectPage" class="songdb-select-page" title="Select every result currently shown on this page">Select All</button>
         <div class="songdb-metric-switch" role="group" aria-label="Database tempo column">
           <button type="button" id="songdbMetricBpm" class="is-active" aria-pressed="true">BPM</button>
           <button type="button" id="songdbMetricFlux" aria-pressed="false">Flux</button>
@@ -38445,94 +38445,14 @@ html body #mainContent #ebInputActions > #ebProximityAction:disabled :is(.eb-pro
 </script>
 
 <style id="eb-shared-heading-baseline-v36">
-/* One title size and a shared baseline, including touch layouts. */
-html body #mainContent #songDbSection.songdb-card .songdb-head {
-  display:grid !important; grid-template-columns:minmax(0,1fr) auto !important;
-  align-items:baseline !important; column-gap:12px !important; row-gap:6px !important;
-}
-html body #mainContent #songDbSection.songdb-card .songdb-head > div:first-child,
-html body #mainContent #songDbSection.songdb-card .songdb-head > .songdb-head-tools {
-  display:contents !important;
-}
-html body #mainContent #songDbSection.songdb-card .songdb-head .songdb-heading,
-html body #mainContent #songDbSection.songdb-card .songdb-head #songdbCount,
+/* Song title on the player shares the large title size. */
 html body #mainContent #appModeLoad .eb-hero-song {
   font-family:'Lido',serif !important; font-size:var(--eb-type-large) !important;
   font-weight:400 !important; font-style:normal !important; line-height:1.2 !important;
-  letter-spacing:0 !important; padding:0 !important; margin:0 !important;
+  letter-spacing:0 !important; padding:0 !important; margin:0 0 6px !important;
 }
-html body #mainContent #songDbSection.songdb-card .songdb-head .songdb-heading {
-  grid-column:1 !important; grid-row:1 !important; align-self:baseline !important;
-  min-width:0 !important; white-space:nowrap !important;
-}
-html body #mainContent #songDbSection.songdb-card .songdb-head #songdbCount {
-  grid-column:2 !important; grid-row:1 !important; align-self:baseline !important;
-  justify-self:end !important; position:static !important; transform:none !important;
-  width:auto !important; min-width:0 !important; white-space:nowrap !important;
-}
-html body #mainContent #songDbSection.songdb-card .songdb-head .songdb-sub {
-  grid-column:1 !important; grid-row:2 !important; align-self:start !important;
-  margin:0 !important; min-width:0 !important;
-}
-html body #mainContent #songDbSection.songdb-card .songdb-head #songdbSelectPage {
-  grid-column:2 !important; grid-row:2 !important; align-self:start !important;
-  justify-self:end !important; margin:0 !important;
-}
-html body #mainContent #appModeLoad .eb-hero-song { margin-bottom:6px !important; }
 @media (max-width:380.99px) {
-  html body #mainContent #songDbSection.songdb-card .songdb-head,
   html body #mainContent #appModeLoad .eb-hero-song { --eb-type-large:1.125rem; }
-}
-</style>
-
-<style id="eb-selection-toolbar-v37">
-/* Selection and tempo-column controls share a stable, touch-friendly row. */
-html body #mainContent #songDbSection.songdb-card .songdb-metric-toolbar {
-  display:flex !important; flex-flow:row wrap !important;
-  justify-content:space-between !important; align-items:center !important;
-  column-gap:12px !important; row-gap:6px !important; margin:12px 0 !important;
-  min-height:48px !important; width:100%; box-sizing:border-box;
-}
-html body #mainContent #songDbSection.songdb-card #songdbSelectPage {
-  appearance:none !important; -webkit-appearance:none !important;
-  position:static !important; grid-area:auto !important;
-  display:inline-flex !important; align-items:center !important; justify-content:center !important;
-  flex:0 0 auto !important; box-sizing:border-box !important;
-  min-width:96px !important; width:auto !important; max-width:100% !important;
-  height:48px !important; min-height:48px !important;
-  margin:0 !important; padding:0 12px !important;
-  border:1px solid rgba(255,255,255,.18) !important; border-radius:12px !important;
-  background:linear-gradient(180deg,#202023,#0c0c0e) !important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 4px 12px -8px #000 !important;
-  color:#d6d6db !important; opacity:1 !important; cursor:pointer !important;
-  font:400 var(--eb-type-medium)/1.2 'Lido',serif !important;
-  text-shadow:none !important; white-space:nowrap !important;
-}
-html body #mainContent #songDbSection.songdb-card #songdbSelectPage:hover:not(:disabled),
-html body #mainContent #songDbSection.songdb-card #songdbSelectPage[data-mode="clear"] {
-  color:var(--eb-coral,#F97B57) !important;
-  border-color:rgba(249,123,87,.6) !important;
-  background:linear-gradient(180deg,#292023,#100c0d) !important;
-}
-html body #mainContent #songDbSection.songdb-card #songdbSelectPage:focus-visible {
-  outline:2px solid var(--eb-coral,#F97B57) !important; outline-offset:3px !important;
-}
-html body #mainContent #songDbSection.songdb-card #songdbSelectPage:disabled {
-  color:#5a5a60 !important; border-color:#303034 !important;
-  background:#0d0d0f !important; cursor:default !important; box-shadow:none !important;
-}
-html body #mainContent #songDbSection.songdb-card .songdb-metric-switch {
-  display:inline-flex !important; flex:0 0 auto !important; box-sizing:border-box !important;
-  align-items:center !important; height:48px !important; gap:2px !important;
-  padding:1px !important; border-radius:12px !important;
-}
-html body #mainContent #songDbSection.songdb-card .songdb-metric-switch button {
-  display:inline-flex !important; align-items:center !important; justify-content:center !important;
-  box-sizing:border-box !important; height:44px !important; min-height:44px !important;
-  padding:0 12px !important; margin:0 !important; line-height:1.2 !important;
-}
-@media (max-width:380.99px) {
-  html body #mainContent #songDbSection.songdb-card .songdb-metric-toolbar { column-gap:6px !important; }
 }
 </style>
 
@@ -38659,6 +38579,296 @@ html body #mainContent .app-header .title .eb-brand-text { box-sizing:border-box
   document.addEventListener('keydown',function(e){if(e.key==='Escape')hide();});
   addEventListener('resize',hide);
   document.addEventListener('scroll',function(e){if(!tip || !tip.contains(e.target))hide();},true);
+})();
+</script>
+<style id="eb-spacing-scale-v40">
+/* ── Spacing scale v40 ───────────────────────────────────────────────────
+   One spacing scale for the whole app: 3 · 6 · 12 · 24 · 48. Each step is
+   double the one before, so every size divides evenly into every larger one.
+   Each device class assigns a step from that scale to each role:
+
+     role         desktop / laptop / Surface / tablet    phone (portrait + landscape)
+     --eb-page    24  page margin                         12
+     --eb-section 24  between panels                      12
+     --eb-pad     24  inside a panel                      12
+     --eb-block   24  between blocks inside a panel       12
+     --eb-group   12  between related groups              12
+     --eb-ctl     12  between controls in a row            6
+     --eb-tight    6  label to its value                   3
+     --eb-major   48  between Settings & Info sections    24
+
+   The instrument parts (VFD readouts, toggles, dial, waveform, graph) keep
+   their calibrated inner geometry; this layer sets the space around them. */
+:root{
+  --eb-s1:3px; --eb-s2:6px; --eb-s3:12px; --eb-s4:24px; --eb-s5:48px;
+  --eb-page:var(--eb-s4); --eb-section:var(--eb-s4); --eb-pad:var(--eb-s4);
+  --eb-block:var(--eb-s4); --eb-group:var(--eb-s3); --eb-ctl:var(--eb-s3);
+  --eb-tight:var(--eb-s2); --eb-major:var(--eb-s5);
+  /* earlier tokens now point at the same scale (18 and 36 are not on it) */
+  --eb-space-1:var(--eb-s2); --eb-space-2:var(--eb-s3); --eb-space-3:var(--eb-group);
+  --eb-space-4:var(--eb-s4); --eb-space-6:var(--eb-major); --eb-space-8:var(--eb-s5);
+  --eb-section-gap:var(--eb-section); --eb-panel-pad:var(--eb-pad);
+}
+@media (max-width:600.99px), (max-height:510.99px) and (orientation:landscape) and (max-width:980.99px){
+  :root{
+    --eb-page:var(--eb-s3); --eb-section:var(--eb-s3); --eb-pad:var(--eb-s3);
+    --eb-block:var(--eb-s3); --eb-group:var(--eb-s3); --eb-ctl:var(--eb-s2);
+    --eb-tight:var(--eb-s1); --eb-major:var(--eb-s4);
+  }
+}
+
+/* ── Page ─────────────────────────────────────────────────────────────── */
+html body #mainContent.wrap{
+  padding:var(--eb-page) var(--eb-page) var(--eb-s5) !important;
+  row-gap:var(--eb-section) !important; column-gap:var(--eb-section) !important;
+}
+/* Every panel in the page column sits one section step below the one before:
+   the grid gap does it on side-panel layouts, a top margin on stacked ones. */
+html body #mainContent.wrap > :is(#appModeLoad,#songDbSection,#tasteProfileSection,#infoSection,#ebUploadWorkspace,.offline-app-card){ margin:0 !important; }
+@media (max-width:900.99px), (max-height:510.99px) and (orientation:landscape) and (max-width:980.99px){
+  html body #mainContent.wrap > .app-header{ margin:0 !important; }
+  html body #mainContent.wrap > :is(#appModeLoad,#songDbSection,#tasteProfileSection,#infoSection,#ebUploadWorkspace,.offline-app-card){ margin-top:var(--eb-section) !important; }
+}
+
+/* ── Side panel (desktop, laptop, Surface, iPad landscape) ────────────── */
+@media (min-width:981px), (min-width:901px) and (min-height:511px), (min-width:901px) and (orientation:portrait){
+  html body #mainContent.wrap > .app-header{
+    top:var(--eb-page) !important; bottom:var(--eb-page) !important;
+    height:auto !important; max-height:none !important;
+    padding:var(--eb-s4) var(--eb-s3) !important; gap:var(--eb-s4) !important;
+  }
+  html body #mainContent .app-header .title{ padding:0 0 var(--eb-s4) !important; margin:0 !important; }
+  html body #mainContent .app-mode-tabs{ gap:var(--eb-s3) !important; }
+  html body #mainContent > header.app-header > #ebInputActions{ gap:var(--eb-s3) !important; }
+}
+
+/* ── Top bar (tablet portrait, phones) ────────────────────────────────── */
+@media (max-width:900.99px), (max-height:510.99px) and (orientation:landscape) and (max-width:980.99px){
+  html body #mainContent > .app-header{
+    padding:var(--eb-s3) !important; row-gap:var(--eb-s3) !important; column-gap:var(--eb-s3) !important;
+  }
+  html body #mainContent > header.app-header > #ebInputActions{ gap:var(--eb-s2) !important; }
+}
+
+/* ── Panels: one inner padding ────────────────────────────────────────── */
+html body #mainContent #appModeLoad .display-shell,
+html body #mainContent > :is(#songDbSection,#tasteProfileSection,#infoSection).app-mode-panel.card{
+  padding:var(--eb-pad) !important;
+}
+html body #mainContent .offline-app-card{ padding:var(--eb-group) var(--eb-pad) !important; }
+html body #mainContent .offline-app-row{ gap:var(--eb-ctl) !important; }
+
+/* ── Player page ──────────────────────────────────────────────────────── */
+html body #mainContent #appModeLoad{ gap:var(--eb-section) !important; row-gap:var(--eb-section) !important; }
+html body #mainContent #appModeLoad > *{ margin-top:0 !important; margin-bottom:0 !important; }
+html body #mainContent #appModeLoad > .player-visuals.player-visuals{ gap:var(--eb-section) !important; margin:0 !important; }
+html body #mainContent #appModeLoad .player-visuals > *{ margin-top:0 !important; margin-bottom:0 !important; }
+html body #mainContent #appModeLoad #utilityControls#utilityControls{ padding:var(--eb-s2) var(--eb-pad) !important; }
+/* hero → song clock row → media controls: one block step apart */
+html body #mainContent #appModeLoad .eb-cinema-hero{
+  margin:0 !important; padding-bottom:var(--eb-block) !important;
+  column-gap:var(--eb-block) !important; row-gap:var(--eb-group) !important;
+}
+html body #mainContent #appModeLoad .display-shell > .player-seek{ margin:0 0 var(--eb-block) !important; }
+html body #mainContent #appModeLoad .display-shell > .media-controls{ margin:0 !important; padding:var(--eb-group) !important; }
+html body #mainContent #appModeLoad .media-controls .media-controls-body{ padding-top:var(--eb-tight) !important; }
+html body #mainContent #appModeLoad .media-controls .hero-controls{ column-gap:var(--eb-block) !important; row-gap:var(--eb-group) !important; }
+html body #mainContent #appModeLoad .media-controls .transport-panel{ gap:var(--eb-ctl) !important; }
+/* Phone held sideways: the media controls sit in one row like every other
+   width, instead of stacking transport / switch / dial down the panel. */
+@media (min-width:600px) and (max-height:540.99px) and (orientation:landscape) and (max-width:980.99px){
+  html body #mainContent #appModeLoad .display-shell .media-controls .hero-controls{
+    flex-direction:row !important; flex-wrap:nowrap !important; justify-content:center !important;
+    align-items:center !important; height:auto !important;
+  }
+  html body #mainContent #appModeLoad .display-shell .media-controls .transport-panel,
+  html body #mainContent #appModeLoad .display-shell .media-controls .volume-control{
+    width:auto !important; flex:0 0 auto !important;
+  }
+}
+
+/* ── Database ─────────────────────────────────────────────────────────── */
+/* Header back on one row: title + description on the left; result count
+   with Select All directly under it on the right. */
+html body #mainContent #songDbSection.songdb-card .songdb-head{
+  display:flex !important; justify-content:space-between !important; align-items:baseline !important;
+  gap:var(--eb-block) !important; margin:0 0 var(--eb-block) !important; padding:0 0 var(--eb-block) !important;
+}
+html body #mainContent #songDbSection.songdb-card .songdb-head{ flex-wrap:nowrap !important; }
+html body #mainContent #songDbSection.songdb-card .songdb-head > :first-child{ flex:1 1 0 !important; min-width:0 !important; }
+html body #mainContent #songDbSection.songdb-card .songdb-head .songdb-sub{ margin:var(--eb-tight) 0 0 !important; }
+html body #mainContent #songDbSection.songdb-card .songdb-head-tools{
+  align-self:baseline !important;
+  display:flex !important; flex-direction:column !important; align-items:flex-end !important;
+  justify-content:flex-start !important; gap:var(--eb-s2) !important;
+  flex:0 0 auto !important; margin-left:auto !important;
+}
+html body #mainContent #songDbSection.songdb-card .songdb-head-tools #songdbSelectPage{ margin:0 !important; align-self:flex-end !important; }
+html body #mainContent #songDbSection.songdb-card .songdb-control-grid{ margin:0 0 var(--eb-group) !important; }
+html body #mainContent #songDbSection.songdb-card .songdb-metric-toolbar{ margin:0 0 var(--eb-group) !important; }
+html body #mainContent #songDbSection.songdb-card .songdb-table-wrap{ margin-top:0 !important; }
+html body #mainContent #songDbSection.songdb-card .songdb-pager{ margin-top:var(--eb-group) !important; }
+html body #mainContent #songDbSection.songdb-card .songdb-foot{ margin-top:var(--eb-block) !important; }
+/* List layout (Surface / tablets / phones): the column header's three value
+   labels share the same columns as the values in each entry, so BPM, Time
+   and Ë stay on one line over their numbers. */
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table thead tr{
+  column-gap:var(--eb-s3) !important; padding:var(--eb-s2) var(--eb-s3) !important;
+}
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table thead th[data-sort="bpm"],
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table thead th[data-sort="flux"],
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table thead th[data-sort="len"],
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table thead th[data-sort="e"]{
+  flex:0 0 calc((100% - 2 * var(--eb-s3)) / 3) !important;
+}
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table thead{ margin:0 0 var(--eb-s2) !important; }
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table tbody{ gap:var(--eb-s2) !important; }
+/* the narrowest phones keep Ë in its own third column too, under its label
+   (an old two-column rule had dropped it onto a line of its own) */
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table tbody td.songdb-e{ grid-column:auto !important; }
+html body #mainContent #songDbSection.songdb-mobilelike-device .songdb-table tbody tr{
+  column-gap:var(--eb-s3) !important; row-gap:var(--eb-s2) !important; padding:var(--eb-s3) !important;
+}
+
+/* ── Profile ──────────────────────────────────────────────────────────── */
+html body #mainContent #tasteProfileSection .taste-head{ margin:0 0 var(--eb-block) !important; padding:0 0 var(--eb-block) !important; }
+/* metric names keep a hairline of air between columns, so two-word names
+   wrap (AVG. / BPM like TOP / GENRE) instead of running into each other */
+html body #mainContent #tasteProfileSection .taste-meter-label{ padding:0 var(--eb-s1) !important; box-sizing:border-box !important; text-align:center !important; }
+html body #mainContent #tasteProfileSection .taste-heading-trigger{ padding:var(--eb-group) var(--eb-group) !important; }
+html body #mainContent #tasteProfileSection .taste-meter-panel{ padding:var(--eb-pad) !important; margin:0 0 var(--eb-block) !important; }
+html body #mainContent #tasteProfileSection .taste-meter-head{ margin:0 0 var(--eb-block) !important; }
+html body #mainContent #tasteProfileSection .taste-meter-readout{ margin-top:var(--eb-group) !important; }
+html body #mainContent #tasteProfileSection :is(.taste-meter-description,.taste-meter-methods){ margin-top:var(--eb-group) !important; }
+html body #mainContent #tasteProfileSection #ebSignaturePresetCard{ margin-top:var(--eb-block) !important; padding:var(--eb-pad) !important; }
+html body #mainContent #tasteProfileSection #ebSignaturePresetCard :is(.eb-preset-strip,.eb-preset-detail,.eb-profile-manager){ margin-top:var(--eb-group) !important; }
+html body #mainContent #tasteProfileSection .eb-preset-strip{ gap:var(--eb-group) !important; }
+html body #mainContent #tasteProfileSection .taste-grid{ gap:var(--eb-block) !important; }
+html body #mainContent #tasteProfileSection .taste-panel{ padding:var(--eb-pad) !important; }
+html body #mainContent #tasteProfileSection .taste-panel > * + *{ margin-top:var(--eb-group) !important; }
+html body #mainContent #tasteProfileSection .taste-panel > .taste-identity-box{ margin-bottom:0 !important; }
+html body #mainContent #tasteProfileSection :is(.taste-actions,.taste-profile-footer){ gap:var(--eb-ctl) !important; }
+html body #mainContent #tasteProfileSection .taste-stats{ gap:var(--eb-s2) !important; }
+
+/* ── Settings & Info ──────────────────────────────────────────────────── */
+html body #mainContent #infoSection .eb-info-head{ margin:0 0 var(--eb-block) !important; padding:0 0 var(--eb-block) !important; }
+html body #mainContent #infoSection .eb-info-jump{ margin:0 !important; gap:var(--eb-ctl) !important; }
+html body #mainContent #infoSection .eb-info-section,
+html body #mainContent #infoSection .eb-info-quick{ margin:var(--eb-major) 0 0 !important; }
+html body #mainContent #infoSection .eb-info-jump + .eb-info-section{ margin-top:var(--eb-block) !important; }
+html body #mainContent #infoSection .eb-info-section-title{ margin:0 0 var(--eb-group) !important; }
+html body #mainContent #infoSection :is(.eb-info-grid,.eb-info-quick-steps,.eb-info-words){ gap:var(--eb-block) !important; }
+html body #mainContent #infoSection .eb-info-win > header{ padding:var(--eb-group) var(--eb-group) var(--eb-group) var(--eb-pad) !important; gap:var(--eb-group) !important; }
+html body #mainContent #infoSection .eb-info-win > :is(p,ol,ul){ padding-top:var(--eb-group) !important; padding-right:var(--eb-pad) !important; }
+html body #mainContent #infoSection .eb-info-win > p{ padding-left:var(--eb-pad) !important; }
+html body #mainContent #infoSection .eb-info-win > :last-child{ padding-bottom:var(--eb-pad) !important; }
+html body #mainContent #infoSection :is(.eb-info-quick-steps li,.eb-info-words > div){ padding:var(--eb-pad) !important; }
+html body #mainContent #infoSection .eb-set-row{ padding:var(--eb-group) var(--eb-pad) !important; gap:var(--eb-group) !important; }
+
+/* ── Phones and upright tablets: Proximity in the player panel ─────────── */
+/* The rounded Proximity button moves from the top bar into the player panel
+   (eb-phone-proximity-v40 moves it), on the left of the song time's row: its
+   left edge lines up with the seek bar's left end, as the clock's right edge
+   lines up with the seek bar's right end. The top bar keeps Upload Music. This covers every top-bar layout:
+   phones either way up and tablets held upright. */
+@media (max-width:900.99px), (max-height:510.99px) and (orientation:landscape) and (max-width:980.99px){
+  html body #mainContent #appModeLoad .player-seek > #ebProximityAction{
+    grid-column:1 !important; grid-row:1 !important;
+    justify-self:start !important; align-self:center !important;
+    position:relative; z-index:2; box-sizing:border-box !important;
+    display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important;
+    width:auto !important; min-width:0 !important; max-width:none !important;
+    height:44px !important; min-height:44px !important; margin:0 !important;
+    padding:0 var(--eb-s3) !important; gap:var(--eb-s2) !important;
+    border:1px solid transparent !important; border-radius:var(--eb-s3) !important;
+    font:400 var(--eb-type-medium)/1.2 'Lido',serif !important; letter-spacing:0 !important;
+    color:var(--eb-red,#F9423A) !important; cursor:pointer; white-space:nowrap !important;
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+    background:linear-gradient(160deg,rgba(255,255,255,.10),transparent 34%) padding-box,
+      radial-gradient(80% 60% at 50% 108%,rgba(249,66,58,.20),transparent 72%) padding-box,
+      linear-gradient(180deg,#17171a,#070708) padding-box,
+      linear-gradient(to bottom left,rgba(249,66,58,.85),rgba(255,255,255,.10) 52%,rgba(249,66,58,.45)) border-box !important;
+    box-shadow:0 10px 24px -16px #000,inset 0 1px 0 rgba(255,255,255,.08) !important;
+  }
+  html body #mainContent #appModeLoad .player-seek > #ebProximityAction .eb-prox-icon{ width:24px; height:20px; flex:0 0 24px; }
+  html body #mainContent #appModeLoad .player-seek > #ebProximityAction .eb-prox-label{ font:inherit !important; color:inherit !important; }
+  html body #mainContent #appModeLoad .player-seek > #ebProximityAction[aria-pressed="true"]{
+    border-color:rgba(249,66,58,.75) !important; color:#F97B57 !important;
+    box-shadow:0 0 20px -8px rgba(249,66,58,.65),inset 0 1px 0 rgba(255,255,255,.12) !important;
+  }
+  html body #mainContent #appModeLoad .player-seek > #ebProximityAction:disabled{
+    color:#5a5a60 !important; border:1px solid #343438 !important; cursor:default !important;
+    background:linear-gradient(180deg,#151517,#09090a) !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035) !important;
+  }
+  /* the song time sits centred on the button's row */
+  html body #mainContent #appModeLoad .player-seek.eb-has-sensor .player-time-controls{ align-self:center !important; }
+}
+/* The button keeps its word on the narrowest phones too (the top bar's
+   icon-only rule is for the top bar). */
+@media (max-width:380.99px){
+  html body #mainContent #appModeLoad .player-seek > #ebProximityAction .eb-prox-label{
+    position:static !important; width:auto !important; height:auto !important;
+    overflow:visible !important; clip-path:none !important; white-space:nowrap !important;
+  }
+  html body #mainContent #appModeLoad .player-seek > #ebProximityAction{ width:auto !important; padding:0 var(--eb-s3) !important; gap:var(--eb-s2) !important; }
+}
+/* Phone held sideways: Upload Music matches the menu tabs again - icon above
+   the label, filling the bar's height - now that Proximity is in the player. */
+@media (max-height:510.99px) and (orientation:landscape) and (max-width:980.99px){
+  html body #mainContent > header.app-header > #ebInputActions{ align-self:stretch !important; }
+  html body #mainContent #ebInputActions > #ebUploadTab.eb-upload-tile{
+    flex-direction:column !important; align-items:center !important; justify-content:center !important;
+    gap:var(--eb-s2) !important; padding:var(--eb-s2) var(--eb-s3) !important;
+    height:100% !important; min-height:44px !important; border-radius:var(--eb-s3) !important;
+  }
+  html body #mainContent #ebInputActions > #ebUploadTab.eb-upload-tile .nav-icon{ width:16px !important; height:16px !important; flex:0 0 16px !important; }
+  html body #mainContent #ebInputActions > #ebUploadTab.eb-upload-tile .nav-helper{ font:300 var(--eb-type-medium)/1.2 "Lido",serif !important; letter-spacing:.025em !important; }
+}
+/* Narrow phones put the clock on its own row under an empty label row; the
+   button joins it there, on the left. */
+@media (max-width:360.99px){
+  html body #mainContent #appModeLoad .player-seek > #ebProximityAction{ grid-row:2 !important; }
+}
+
+/* ── Watch ────────────────────────────────────────────────────────────── */
+/* The watch stage places its rows itself, scaled to the screen; the gaps
+   inside rows, badges, buttons and toasts follow the same scale. */
+#ebWatch .ebw-item{ gap:var(--eb-s3); }
+#ebWatch .ebw-seg{ column-gap:var(--eb-s1); }
+#ebWatch .ebw-badge{ padding:var(--eb-s1) var(--eb-s3); }
+#ebWatch .ebw-btn{ padding:0 var(--eb-s4); }
+#ebWatch .ebw-toast{ padding:var(--eb-s3) var(--eb-s4); }
+#ebWatch :is(.ebw-tcol,.ebw-dotrow){ gap:var(--eb-s3); }
+</style>
+<script id="eb-phone-proximity-v40">
+(function(){
+  'use strict';
+  /* Phones and upright tablets (the top-bar layouts): the rounded Proximity button lives in the player panel, on the
+     song time's row; on every other layout it stays in the side panel / top
+     bar above Upload Music. Only its place changes: it is the same button,
+     with the same click, state and labels (eb-input-actions-v34). */
+  var Q = '(max-width:900.99px), (max-height:510.99px) and (orientation:landscape) and (max-width:980.99px)';
+  var mq = window.matchMedia ? window.matchMedia(Q) : null;
+  function place(){
+    var action = document.getElementById('ebProximityAction');
+    var group = document.getElementById('ebInputActions');
+    var seek = document.querySelector('#appModeLoad .player-seek');
+    if (!action || !group || !seek) return;
+    if (mq && mq.matches) {
+      if (action.parentNode !== seek) seek.insertBefore(action, seek.firstChild);
+    } else if (action.parentNode !== group) {
+      group.insertBefore(action, group.firstChild);
+    }
+  }
+  function init(){
+    place();
+    if (mq) {
+      var on = function(){ place(); try { window.dispatchEvent(new Event('resize')); } catch (e) {} };
+      if (mq.addEventListener) mq.addEventListener('change', on); else if (mq.addListener) mq.addListener(on);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once:true }); else init();
 })();
 </script>
 </body>
